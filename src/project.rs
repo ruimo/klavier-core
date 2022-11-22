@@ -4,6 +4,11 @@ use std::rc::Rc;
 use klavier_helper::bag_store::{BagStore, BagStoreEvent};
 use klavier_helper::{bulk_remove, changes};
 use klavier_helper::store::{Store, StoreEvent};
+use serde::de::DeserializeOwned;
+use serde::{Serialize, Deserialize};
+use serde::ser::SerializeStruct;
+use serdo::undo_store::{SqliteUndoStore, SqliteUndoStoreAddCmdError, UndoStore};
+use serdo::cmd::{SerializableCmd, Cmd};
 
 use crate::bar::{Bar, DcFine, EndOrRegion, RepeatStart};
 use crate::ctrl_chg::CtrlChg;
@@ -15,7 +20,7 @@ use crate::note::Note;
 use crate::rhythm::Rhythm;
 use crate::tempo::{TempoValue, Tempo};
 use crate::tuple;
-use crate::undo::{UndoStore, Undo, ModelChanges};
+use crate::undo::{Undo, ModelChanges};
 use crate::velocity::{Velocity, self};
 
 const UNDO_LIMIT: usize = 100;
@@ -27,16 +32,58 @@ pub enum LocationError {
     Overflow,
 }
 
+#[derive(PartialEq, Debug)]
+pub enum ChangeRepoType {
+    MoveSelected,
+    AdHoc,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Project {
     rhythm: Rhythm,
     key: Key,
+
+    #[serde(skip)]
     grid: Grid,
-    undo_store: UndoStore,
+
+    #[serde(skip)]
+    undo_store: crate::undo::UndoStore,
+
+    #[serde(skip)]
+    #[serde(default = "new_note_repo")]
     note_repo: BagStore<u32, Rc<Note>, Option<bool>>, // by start tick.
+
+    #[serde(skip)]
+    #[serde(default = "new_bar_repo")]
     bar_repo: Store<u32, Bar, Option<bool>>,
+
+    #[serde(skip)]
+    #[serde(default = "new_tempo_repo")]
     tempo_repo: Store<u32, Tempo, Option<bool>>,
+
+    #[serde(skip)]
+    #[serde(default = "new_ctrlchg_repo")]
     dumper_repo: Store<u32, CtrlChg, Option<bool>>,
+
+    #[serde(skip)]
+    #[serde(default = "new_ctrlchg_repo")]
     soft_repo: Store<u32, CtrlChg, Option<bool>>,
+}
+
+fn new_note_repo() -> BagStore<u32, Rc<Note>, Option<bool>> {
+    BagStore::new(false)
+}
+
+fn new_bar_repo() -> Store<u32, Bar, Option<bool>> {
+    Store::new(false)
+}
+
+fn new_tempo_repo() -> Store<u32, Tempo, Option<bool>> {
+    Store::new(false)
+}
+
+fn new_ctrlchg_repo() -> Store<u32, CtrlChg, Option<bool>> {
+    Store::new(false)
 }
 
 impl Project {
@@ -60,9 +107,9 @@ impl Project {
         self.rhythm
     }
 
-    pub fn set_rhythm(&mut self, rhythm: Rhythm) {
-        self.rhythm = rhythm;
-    }
+//    pub fn set_rhythm(&mut self, rhythm: Rhythm) {
+//        self.rhythm = rhythm;
+//    }
 
     pub fn key(&self) -> Key {
         self.key
@@ -678,7 +725,7 @@ impl Default for Project {
             rhythm: Rhythm::default(),
             key: Key::NONE,
             grid: Grid::default(),
-            undo_store: UndoStore::new(UNDO_LIMIT),
+            undo_store: crate::undo::UndoStore::new(UNDO_LIMIT),
             note_repo: BagStore::new(true),
             bar_repo: Store::new(true),
             tempo_repo: Store::new(true),
@@ -688,11 +735,50 @@ impl Default for Project {
     }
 }
 
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
+enum ProjectCmd {
+    SetRhythm(Rhythm, Rhythm),
+}
+
+impl Cmd for ProjectCmd {
+    type Model = Project;
+
+    fn undo(&self, proj: &mut Self::Model) {
+        match self {
+            ProjectCmd::SetRhythm(old_rhythm, _) => {
+                proj.rhythm = *old_rhythm;
+            },
+        }
+    }
+
+    fn redo(&self, proj: &mut Self::Model) {
+        match self {
+            ProjectCmd::SetRhythm(_, new_rhythm) => {
+                proj.rhythm = *new_rhythm;
+            },
+        }
+    }
+}
+
+impl SerializableCmd for ProjectCmd {
+}
+
+trait ProjectIntf {
+    fn set_rhythm(&mut self, rhythm: Rhythm) -> Result<(), SqliteUndoStoreAddCmdError>;
+}
+
+impl ProjectIntf for SqliteUndoStore::<ProjectCmd, Project> {
+    fn set_rhythm(&mut self, rhythm: Rhythm) -> Result<(), SqliteUndoStoreAddCmdError> {
+        self.add_cmd(Box::new(ProjectCmd::SetRhythm(self.model().rhythm, rhythm)))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use klavier_helper::store::Store;
+    use serdo::undo_store::{SqliteUndoStore, UndoStore};
 
-    use crate::{tempo::{Tempo, TempoValue}, project::{tempo_at, LocationError}, note::Note, solfa::Solfa, octave::Octave, sharp_flat::SharpFlat, pitch::Pitch, duration::{Duration, Numerator, Denominator, Dots}, velocity::Velocity, trimmer::{Trimmer, RateTrimmer}, bar::{Bar, DcFine, EndOrRegion, RepeatStart}, location::Location, rhythm::Rhythm, ctrl_chg::CtrlChg};
+    use crate::{tempo::{Tempo, TempoValue}, project::{tempo_at, LocationError, ProjectCmd}, note::Note, solfa::Solfa, octave::Octave, sharp_flat::SharpFlat, pitch::Pitch, duration::{Duration, Numerator, Denominator, Dots}, velocity::Velocity, trimmer::{Trimmer, RateTrimmer}, bar::{Bar, DcFine, EndOrRegion, RepeatStart}, location::Location, rhythm::Rhythm, ctrl_chg::CtrlChg, key::Key};
 
     use super::{DEFAULT_TEMPO, Project};
     
@@ -838,7 +924,7 @@ mod tests {
     #[test]
     fn rhythm_at() {
         let mut proj = Project::default();
-        proj.set_rhythm(Rhythm::new(6, 8));
+        proj.rhythm = Rhythm::new(6, 8);
         assert_eq!(proj.last_bar(), None);
 
         assert_eq!(proj.rhythm_at(500), Rhythm::new(6, 8));
@@ -1075,5 +1161,51 @@ mod tests {
         let (tick, note) = z.next().unwrap();
         assert_eq!(*tick, 150);
         assert_eq!(note.duration(), Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO));
+    }
+
+    #[test]
+    fn can_serialize_project() {
+        let mut proj = Project::default();
+        proj.set_key(Key::FLAT_2);
+        proj.rhythm = Rhythm::new(3, 4);
+
+        let ser = bincode::serialize(&proj).unwrap();
+
+        let des: Project = bincode::deserialize(&ser).unwrap();
+
+        assert_eq!(proj.key, des.key);
+        assert_eq!(proj.rhythm, des.rhythm);
+    }
+
+    #[test]
+    fn sqlite_store_can_work() {
+        use tempfile::tempdir;
+        use super::ProjectIntf;
+
+        let dir = tempdir().unwrap();
+        let mut dir = dir.as_ref().to_path_buf();
+        dir.push("project");
+        let mut store = SqliteUndoStore::<ProjectCmd, Project>::open(dir.clone(), None).unwrap();
+
+        store.set_rhythm(Rhythm::new(12, 8)).unwrap();
+        assert_eq!(store.model().rhythm(), Rhythm::new(12, 8));
+
+        store.set_rhythm(Rhythm::new(12, 4)).unwrap();
+        assert_eq!(store.model().rhythm(), Rhythm::new(12, 4));
+
+        store.undo().unwrap();
+        assert_eq!(store.model().rhythm(), Rhythm::new(12, 8));
+
+        store.undo().unwrap();
+        assert_eq!(store.model().rhythm(), Rhythm::default());
+
+        store.redo().unwrap();
+        assert_eq!(store.model().rhythm(), Rhythm::new(12, 8));
+
+        store.set_rhythm(Rhythm::new(16, 8)).unwrap();
+        assert_eq!(store.model().rhythm(), Rhythm::new(16, 8));
+
+        store.undo().unwrap();
+        assert_eq!(store.model().rhythm(), Rhythm::new(12, 8));
     }
 }

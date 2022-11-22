@@ -28,6 +28,12 @@ pub struct UndoStore {
     is_freezed: bool,
 }
 
+impl Default for UndoStore {
+    fn default() -> Self {
+        Self::new(100)
+    }
+}
+
 impl UndoStore {
     pub fn new(capacity: usize) -> Self {
         Self {
