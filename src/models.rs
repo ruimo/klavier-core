@@ -3,7 +3,7 @@ use std::rc::Rc;
 use crate::{note::Note, bar::Bar, tempo::Tempo, ctrl_chg::CtrlChg};
 
 #[derive(Clone, PartialEq, Debug)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(serde::Deserialize, serde::Serialize)]
 pub struct Models {
     pub notes: Vec<Rc<Note>>,
     pub bars: Vec<Bar>,

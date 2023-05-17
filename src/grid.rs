@@ -4,6 +4,7 @@ pub enum GridError {
     ParseError(String),
 }
 
+#[derive(serde::Deserialize, serde::Serialize)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Grid {
     value: u32,

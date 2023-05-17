@@ -13,6 +13,7 @@ use serdo::cmd::{SerializableCmd, Cmd};
 use crate::bar::{Bar, DcFine, EndOrRegion, RepeatStart};
 use crate::ctrl_chg::CtrlChg;
 use crate::grid::Grid;
+use crate::have_start_tick::HaveStartTick;
 use crate::key::Key;
 use crate::location::Location;
 use crate::models::Models;
@@ -42,8 +43,6 @@ pub enum ChangeRepoType {
 pub struct Project {
     rhythm: Rhythm,
     key: Key,
-
-    #[serde(skip)]
     grid: Grid,
 
     #[serde(skip)]
@@ -115,36 +114,36 @@ impl Project {
         self.key
     }
 
-    pub fn set_key(&mut self, key: Key) {
-        self.key = key;
-    }
+//    pub fn set_key(&mut self, key: Key) {
+//        self.key = key;
+//    }
 
     pub fn grid(&self) -> Grid {
         self.grid
     }
 
-    pub fn set_grid(&mut self, grid: Grid) {
-        self.grid = grid;
-    }
+//    pub fn set_grid(&mut self, grid: Grid) {
+//        self.grid = grid;
+//    }
 
-    pub fn add_note(&mut self, note: Note) -> Rc<Note> {
-        let note = Rc::new(note);
-        self.note_repo.add(note.start_tick(), note.clone());
-        let replenishid_bars = self.replenish_bars();
-        self.undo_store.add(
-            Undo::Added {
-                added: Models {
-                    notes: vec![note.clone()],
-                    bars: replenishid_bars,
-                    tempos: vec![],
-                    dumpers: vec![],
-                    softs: vec![],
-                },
-                removed: Models::empty(),
-            }
-        );
-        note
-    }
+    // pub fn add_note(&mut self, note: Note) -> Rc<Note> {
+        // let note = Rc::new(note);
+        // self.note_repo.add(note.start_tick(), note.clone());
+        // let replenishid_bars = self.replenish_bars();
+        // self.undo_store.add(
+            // Undo::Added {
+                // added: Models {
+                    // notes: vec![note.clone()],
+                    // bars: replenishid_bars,
+                    // tempos: vec![],
+                    // dumpers: vec![],
+                    // softs: vec![],
+                // },
+                // removed: Models::empty(),
+            // }
+        // );
+        // note
+    // }
 
     pub fn add_bar(&mut self, bar: Bar) {
         let origin = self.bar_repo.add(bar.start_tick, bar).map(|o| vec![o]).unwrap_or(vec![]);
@@ -737,7 +736,10 @@ impl Default for Project {
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 enum ProjectCmd {
-    SetRhythm(Rhythm, Rhythm),
+    SetRhythm { old_value: Rhythm, new_value: Rhythm },
+    SetKey { old_value: Key, new_value: Key },
+    SetGrid { old_value: Grid, new_value: Grid },
+    ModelAddRemoved { added: Models, removed: Models },
 }
 
 impl Cmd for ProjectCmd {
@@ -745,16 +747,94 @@ impl Cmd for ProjectCmd {
 
     fn undo(&self, proj: &mut Self::Model) {
         match self {
-            ProjectCmd::SetRhythm(old_rhythm, _) => {
-                proj.rhythm = *old_rhythm;
+            ProjectCmd::SetRhythm { old_value, new_value: _ } => {
+                proj.rhythm = *old_value;
+            },
+            ProjectCmd::SetKey { old_value, new_value: _ } => {
+                proj.key = *old_value;
+            },
+            ProjectCmd::SetGrid { old_value, new_value: _ } => {
+                proj.grid = *old_value;
+            },
+            ProjectCmd::ModelAddRemoved { added, removed } => {
+                for n in added.notes.iter() {
+                    proj.note_repo.remove(&n.start_tick(), n);
+                }
+                for b in added.bars.iter() {
+                    proj.bar_repo.remove(&b.start_tick);
+                }
+                for t in added.tempos.iter() {
+                    proj.tempo_repo.remove(&t.start_tick());
+                }
+                for d in added.dumpers.iter() {
+                    proj.dumper_repo.remove(&d.start_tick);
+                }
+                for s in added.softs.iter() {
+                    proj.soft_repo.remove(&s.start_tick);
+                }
+
+                for n in removed.notes.iter() {
+                    proj.note_repo.add(n.start_tick(), n.clone());
+                }
+                for b in removed.bars.iter() {
+                    proj.bar_repo.add(b.start_tick, *b);
+                }
+                for t in removed.tempos.iter() {
+                    proj.tempo_repo.add(t.start_tick, *t);
+                }
+                for d in removed.dumpers.iter() {
+                    proj.dumper_repo.add(d.start_tick, *d);
+                }
+                for s in removed.softs.iter() {
+                    proj.soft_repo.add(s.start_tick, *s);
+                }
             },
         }
     }
 
     fn redo(&self, proj: &mut Self::Model) {
         match self {
-            ProjectCmd::SetRhythm(_, new_rhythm) => {
-                proj.rhythm = *new_rhythm;
+            ProjectCmd::SetRhythm { old_value: _, new_value } => {
+                proj.rhythm = *new_value;
+            },
+            ProjectCmd::SetKey { old_value: _, new_value } => {
+                proj.key = *new_value;
+            },
+            ProjectCmd::SetGrid { old_value: _, new_value } => {
+                proj.grid = *new_value;
+            },
+            ProjectCmd::ModelAddRemoved { added, removed } => {
+                for n in removed.notes.iter() {
+                    proj.note_repo.remove(&n.start_tick(), n);
+                }
+                for b in removed.bars.iter() {
+                    proj.bar_repo.remove(&b.start_tick);
+                }
+                for t in removed.tempos.iter() {
+                    proj.tempo_repo.remove(&t.start_tick());
+                }
+                for d in removed.dumpers.iter() {
+                    proj.dumper_repo.remove(&d.start_tick);
+                }
+                for s in removed.softs.iter() {
+                    proj.soft_repo.remove(&s.start_tick);
+                }
+
+                for n in added.notes.iter() {
+                    proj.note_repo.add(n.start_tick(), n.clone());
+                }
+                for b in added.bars.iter() {
+                    proj.bar_repo.add(b.start_tick, *b);
+                }
+                for t in added.tempos.iter() {
+                    proj.tempo_repo.add(t.start_tick, *t);
+                }
+                for d in added.dumpers.iter() {
+                    proj.dumper_repo.add(d.start_tick, *d);
+                }
+                for s in added.softs.iter() {
+                    proj.soft_repo.add(s.start_tick, *s);
+                }
             },
         }
     }
@@ -765,11 +845,22 @@ impl SerializableCmd for ProjectCmd {
 
 trait ProjectIntf {
     fn set_rhythm(&mut self, rhythm: Rhythm) -> Result<(), SqliteUndoStoreAddCmdError>;
+    fn set_key(&mut self, key: Key) -> Result<(), SqliteUndoStoreAddCmdError>;
+    fn set_grid(&mut self, grid: Grid) -> Result<(), SqliteUndoStoreAddCmdError>;
+    fn add_note(&mut self, note: Note) -> Rc<Note>;
 }
 
 impl ProjectIntf for SqliteUndoStore::<ProjectCmd, Project> {
     fn set_rhythm(&mut self, rhythm: Rhythm) -> Result<(), SqliteUndoStoreAddCmdError> {
-        self.add_cmd(Box::new(ProjectCmd::SetRhythm(self.model().rhythm, rhythm)))
+        self.add_cmd(Box::new(ProjectCmd::SetRhythm { old_value: self.model().rhythm, new_value: rhythm } ))
+    }
+
+    fn set_key(&mut self, key: Key) -> Result<(), SqliteUndoStoreAddCmdError> {
+        self.add_cmd(Box::new(ProjectCmd::SetKey { old_value: self.model().key, new_value: key }))
+    }
+
+    fn set_grid(&mut self, grid: Grid) -> Result<(), SqliteUndoStoreAddCmdError> {
+        self.add_cmd(Box::new(ProjectCmd::SetGrid { old_value: self.model().grid, new_value: grid }))
     }
 }
 
@@ -778,7 +869,7 @@ mod tests {
     use klavier_helper::store::Store;
     use serdo::undo_store::{SqliteUndoStore, UndoStore};
 
-    use crate::{tempo::{Tempo, TempoValue}, project::{tempo_at, LocationError, ProjectCmd}, note::Note, solfa::Solfa, octave::Octave, sharp_flat::SharpFlat, pitch::Pitch, duration::{Duration, Numerator, Denominator, Dots}, velocity::Velocity, trimmer::{Trimmer, RateTrimmer}, bar::{Bar, DcFine, EndOrRegion, RepeatStart}, location::Location, rhythm::Rhythm, ctrl_chg::CtrlChg, key::Key};
+    use crate::{tempo::{Tempo, TempoValue}, project::{tempo_at, LocationError, ProjectCmd}, note::Note, solfa::Solfa, octave::Octave, sharp_flat::SharpFlat, pitch::Pitch, duration::{Duration, Numerator, Denominator, Dots}, velocity::Velocity, trimmer::{Trimmer, RateTrimmer}, bar::{Bar, DcFine, EndOrRegion, RepeatStart}, location::Location, rhythm::Rhythm, ctrl_chg::CtrlChg, key::Key, grid::Grid};
 
     use super::{DEFAULT_TEMPO, Project};
     
@@ -1166,7 +1257,7 @@ mod tests {
     #[test]
     fn can_serialize_project() {
         let mut proj = Project::default();
-        proj.set_key(Key::FLAT_2);
+        proj.key = Key::FLAT_2;
         proj.rhythm = Rhythm::new(3, 4);
 
         let ser = bincode::serialize(&proj).unwrap();
@@ -1178,7 +1269,7 @@ mod tests {
     }
 
     #[test]
-    fn sqlite_store_can_work() {
+    fn sqlite_store_can_save_rhythm() {
         use tempfile::tempdir;
         use super::ProjectIntf;
 
@@ -1207,5 +1298,69 @@ mod tests {
 
         store.undo().unwrap();
         assert_eq!(store.model().rhythm(), Rhythm::new(12, 8));
+    }
+
+    #[test]
+    fn sqlite_store_can_save_key() {
+        use tempfile::tempdir;
+        use super::ProjectIntf;
+
+        let dir = tempdir().unwrap();
+        let mut dir = dir.as_ref().to_path_buf();
+        dir.push("project");
+        let mut store = SqliteUndoStore::<ProjectCmd, Project>::open(dir.clone(), None).unwrap();
+
+        store.set_key(Key::SHARP_1).unwrap();
+        assert_eq!(store.model().key(), Key::SHARP_1);
+
+        store.set_key(Key::FLAT_1).unwrap();
+        assert_eq!(store.model().key(), Key::FLAT_1);
+
+        store.undo().unwrap();
+        assert_eq!(store.model().key(), Key::SHARP_1);
+
+        store.undo().unwrap();
+        assert_eq!(store.model().key(), Key::NONE);
+
+        store.redo().unwrap();
+        assert_eq!(store.model().key(), Key::SHARP_1);
+
+        store.set_key(Key::SHARP_2).unwrap();
+        assert_eq!(store.model().key(), Key::SHARP_2);
+
+        store.undo().unwrap();
+        assert_eq!(store.model().key(), Key::SHARP_1);
+    }
+
+    #[test]
+    fn sqlite_store_can_save_grid() {
+        use tempfile::tempdir;
+        use super::ProjectIntf;
+
+        let dir = tempdir().unwrap();
+        let mut dir = dir.as_ref().to_path_buf();
+        dir.push("project");
+        let mut store = SqliteUndoStore::<ProjectCmd, Project>::open(dir.clone(), None).unwrap();
+
+        store.set_grid(Grid::from_u32(100).unwrap()).unwrap();
+        assert_eq!(store.model().grid(), Grid::from_u32(100).unwrap());
+
+        store.set_grid(Grid::from_u32(200).unwrap()).unwrap();
+        assert_eq!(store.model().grid(), Grid::from_u32(200).unwrap());
+
+        store.undo().unwrap();
+        assert_eq!(store.model().grid(), Grid::from_u32(100).unwrap());
+
+        store.undo().unwrap();
+        assert_eq!(store.model().grid(), Grid::default());
+
+        store.redo().unwrap();
+        assert_eq!(store.model().grid(), Grid::from_u32(100).unwrap());
+
+        store.set_grid(Grid::from_u32(300).unwrap()).unwrap();
+        assert_eq!(store.model().grid(), Grid::from_u32(300).unwrap());
+
+        store.undo().unwrap();
+        assert_eq!(store.model().grid(), Grid::from_u32(100).unwrap());
     }
 }
