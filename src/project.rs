@@ -107,9 +107,9 @@ impl Project {
         self.rhythm
     }
 
-//    pub fn set_rhythm(&mut self, rhythm: Rhythm) {
-//        self.rhythm = rhythm;
-//    }
+    pub fn set_rhythm(&mut self, rhythm: Rhythm) {
+        self.rhythm = rhythm;
+    }
 
     pub fn key(&self) -> Key {
         self.key
