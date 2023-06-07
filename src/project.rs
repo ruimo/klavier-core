@@ -7,7 +7,7 @@ use klavier_helper::store::{Store, StoreEvent};
 use serde::de::DeserializeOwned;
 use serde::{Serialize, Deserialize};
 use serde::ser::SerializeStruct;
-use serdo::undo_store::{SqliteUndoStore, SqliteUndoStoreAddCmdError, UndoStore};
+use serdo::undo_store::{SqliteUndoStore, UndoStore, SqliteUndoStoreError};
 use serdo::cmd::{SerializableCmd, Cmd};
 
 use crate::bar::{Bar, DcFine, EndOrRegion, RepeatStart};
@@ -764,12 +764,12 @@ impl SerializableCmd for ProjectCmd {
 }
 
 trait ProjectIntf {
-    fn set_rhythm(&mut self, rhythm: Rhythm) -> Result<(), SqliteUndoStoreAddCmdError>;
+    fn set_rhythm(&mut self, rhythm: Rhythm);
 }
 
 impl ProjectIntf for SqliteUndoStore::<ProjectCmd, Project> {
-    fn set_rhythm(&mut self, rhythm: Rhythm) -> Result<(), SqliteUndoStoreAddCmdError> {
-        self.add_cmd(Box::new(ProjectCmd::SetRhythm(self.model().rhythm, rhythm)))
+    fn set_rhythm(&mut self, rhythm: Rhythm) {
+        self.add_cmd(ProjectCmd::SetRhythm(self.model().rhythm, rhythm))
     }
 }
 
