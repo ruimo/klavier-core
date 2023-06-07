@@ -4,10 +4,8 @@ use std::rc::Rc;
 use klavier_helper::bag_store::{BagStore, BagStoreEvent};
 use klavier_helper::{bulk_remove, changes};
 use klavier_helper::store::{Store, StoreEvent};
-use serde::de::DeserializeOwned;
 use serde::{Serialize, Deserialize};
-use serde::ser::SerializeStruct;
-use serdo::undo_store::{SqliteUndoStore, SqliteUndoStoreAddCmdError, UndoStore};
+use serdo::undo_store::{SqliteUndoStore, UndoStore};
 use serdo::cmd::{SerializableCmd, Cmd};
 
 use crate::bar::{Bar, DcFine, EndOrRegion, RepeatStart};
@@ -42,8 +40,6 @@ pub enum ChangeRepoType {
 pub struct Project {
     rhythm: Rhythm,
     key: Key,
-
-    #[serde(skip)]
     grid: Grid,
 
     #[serde(skip)]
@@ -107,28 +103,17 @@ impl Project {
         self.rhythm
     }
 
-//    pub fn set_rhythm(&mut self, rhythm: Rhythm) {
-//        self.rhythm = rhythm;
-//    }
-
     pub fn key(&self) -> Key {
         self.key
-    }
-
-    pub fn set_key(&mut self, key: Key) {
-        self.key = key;
     }
 
     pub fn grid(&self) -> Grid {
         self.grid
     }
 
-    pub fn set_grid(&mut self, grid: Grid) {
-        self.grid = grid;
-    }
-
-    pub fn add_note(&mut self, note: Note) -> Rc<Note> {
-        let note = Rc::new(note);
+//    pub fn add_note(&mut self, note: Note) -> Rc<Note> {
+      pub fn add_note(&mut self, note: Note) {
+            let note = Rc::new(note);
         self.note_repo.add(note.start_tick(), note.clone());
         let replenishid_bars = self.replenish_bars();
         self.undo_store.add(
@@ -143,7 +128,7 @@ impl Project {
                 removed: Models::empty(),
             }
         );
-        note
+//        note
     }
 
     pub fn add_bar(&mut self, bar: Bar) {
@@ -738,6 +723,8 @@ impl Default for Project {
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 enum ProjectCmd {
     SetRhythm(Rhythm, Rhythm),
+    SetKey(Key, Key),
+    SetGrid(Grid, Grid),
 }
 
 impl Cmd for ProjectCmd {
@@ -748,6 +735,12 @@ impl Cmd for ProjectCmd {
             ProjectCmd::SetRhythm(old_rhythm, _) => {
                 proj.rhythm = *old_rhythm;
             },
+            ProjectCmd::SetKey(old_key, _) => {
+                proj.key = *old_key;
+            },
+            ProjectCmd::SetGrid(old_grid, _) => {
+                proj.grid = *old_grid;
+            },
         }
     }
 
@@ -756,6 +749,12 @@ impl Cmd for ProjectCmd {
             ProjectCmd::SetRhythm(_, new_rhythm) => {
                 proj.rhythm = *new_rhythm;
             },
+            ProjectCmd::SetKey(_, new_key) => {
+                proj.key = *new_key;
+            },
+            ProjectCmd::SetGrid(_, new_grid) => {
+                proj.grid = *new_grid;
+            }
         }
     }
 }
@@ -764,21 +763,31 @@ impl SerializableCmd for ProjectCmd {
 }
 
 trait ProjectIntf {
-    fn set_rhythm(&mut self, rhythm: Rhythm) -> Result<(), SqliteUndoStoreAddCmdError>;
+    fn set_rhythm(&mut self, rhythm: Rhythm);
+    fn set_key(&mut self, key: Key);
+    fn set_grid(&mut self, key: Grid);
 }
 
-impl ProjectIntf for SqliteUndoStore::<ProjectCmd, Project> {
-    fn set_rhythm(&mut self, rhythm: Rhythm) -> Result<(), SqliteUndoStoreAddCmdError> {
-        self.add_cmd(Box::new(ProjectCmd::SetRhythm(self.model().rhythm, rhythm)))
+impl ProjectIntf for SqliteUndoStore::<ProjectCmd, Project, ()> {
+    fn set_rhythm(&mut self, rhythm: Rhythm) {
+        self.add_cmd(ProjectCmd::SetRhythm(self.model().rhythm, rhythm));
+    }
+    fn set_key(&mut self, key: Key) {
+        self.add_cmd(ProjectCmd::SetKey(self.model().key, key));
+    }
+    fn set_grid(&mut self, grid: Grid) {
+        self.add_cmd(ProjectCmd::SetGrid(self.model().grid, grid));
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::rc::Rc;
+
     use klavier_helper::store::Store;
     use serdo::undo_store::{SqliteUndoStore, UndoStore};
 
-    use crate::{tempo::{Tempo, TempoValue}, project::{tempo_at, LocationError, ProjectCmd}, note::Note, solfa::Solfa, octave::Octave, sharp_flat::SharpFlat, pitch::Pitch, duration::{Duration, Numerator, Denominator, Dots}, velocity::Velocity, trimmer::{Trimmer, RateTrimmer}, bar::{Bar, DcFine, EndOrRegion, RepeatStart}, location::Location, rhythm::Rhythm, ctrl_chg::CtrlChg, key::Key};
+    use crate::{tempo::{Tempo, TempoValue}, project::{tempo_at, LocationError, ProjectCmd}, note::Note, solfa::Solfa, octave::Octave, sharp_flat::SharpFlat, pitch::Pitch, duration::{Duration, Numerator, Denominator, Dots}, velocity::Velocity, trimmer::{Trimmer, RateTrimmer}, bar::{Bar, DcFine, EndOrRegion, RepeatStart}, location::Location, rhythm::Rhythm, ctrl_chg::CtrlChg, key::Key, grid::Grid};
 
     use super::{DEFAULT_TEMPO, Project};
     
@@ -984,26 +993,27 @@ mod tests {
         let pitch = Pitch::new(Solfa::C, Octave::Oct0, SharpFlat::Null);
         assert_eq!(proj.note_max_end_tick(), None);
 
-        let note0 = proj.add_note(
-            Note::new( // end tick: 100 + 240 * 1.5 = 460
-                100, pitch,
-                Duration::new(Numerator::Quarter, Denominator::from_value(2).unwrap(), Dots::ONE),
-                false, false, Velocity::new(10), Trimmer::ZERO,
-                RateTrimmer::new(1.0, 1.0, 1.0, 1.0),
-                Trimmer::ZERO
-            )
+        let note0 = Note::new( // end tick: 100 + 240 * 1.5 = 460
+            100, pitch,
+            Duration::new(Numerator::Quarter, Denominator::from_value(2).unwrap(), Dots::ONE),
+            false, false, Velocity::new(10), Trimmer::ZERO,
+            RateTrimmer::new(1.0, 1.0, 1.0, 1.0),
+            Trimmer::ZERO
         );
-        assert_eq!(proj.note_max_end_tick(), Some(note0.base_start_tick() + note0.tick_len()));
 
-        let note1 = proj.add_note(
-            Note::new( // end tick: 100 + 960 * 1.5 = 1540
-                100, pitch,
-                Duration::new(Numerator::Whole, Denominator::from_value(2).unwrap(), Dots::ONE),
-                false, false, Velocity::new(10), Trimmer::ZERO,
-                RateTrimmer::new(1.0, 1.0, 1.0, 1.0),
-                Trimmer::ZERO
-            )
+        let end_tick0 = note0.base_start_tick() + note0.tick_len();
+        proj.add_note(note0);
+        assert_eq!(proj.note_max_end_tick(), Some(end_tick0));
+
+        let note1 = Note::new( // end tick: 100 + 960 * 1.5 = 1540
+            100, pitch,
+            Duration::new(Numerator::Whole, Denominator::from_value(2).unwrap(), Dots::ONE),
+            false, false, Velocity::new(10), Trimmer::ZERO,
+            RateTrimmer::new(1.0, 1.0, 1.0, 1.0),
+            Trimmer::ZERO
         );
+
+        proj.add_note(note1.clone());
         assert_eq!(proj.note_max_end_tick(), Some(note1.base_start_tick() + note1.tick_len()));
 
         let _ = proj.add_note(
@@ -1107,7 +1117,7 @@ mod tests {
             Velocity::new(64),
             Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO
         );
-        let note0 = proj.add_note(note0);
+        proj.add_note(note0.clone());
 
         let note1 = Note::new(
             120,
@@ -1117,7 +1127,7 @@ mod tests {
             Velocity::new(64),
             Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO
         );
-        let note1 = proj.add_note(note1);
+        proj.add_note(note1.clone());
 
         let note2 = Note::new(
             150,
@@ -1127,10 +1137,10 @@ mod tests {
             Velocity::new(64),
             Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO
         );
-        let note2 = proj.add_note(note2);
+        proj.add_note(note2.clone());
         assert_eq!(proj.note_repo().len(), 3);
 
-        proj.tuplize(vec![note0.clone(), note1.clone(), note2.clone()]);
+        proj.tuplize(vec![Rc::new(note0), Rc::new(note1), Rc::new(note2)]);
         assert_eq!(proj.note_repo().len(), 3);
 
         let mut z = proj.note_repo().iter();
@@ -1166,7 +1176,7 @@ mod tests {
     #[test]
     fn can_serialize_project() {
         let mut proj = Project::default();
-        proj.set_key(Key::FLAT_2);
+        proj.key = Key::FLAT_2;
         proj.rhythm = Rhythm::new(3, 4);
 
         let ser = bincode::serialize(&proj).unwrap();
@@ -1177,35 +1187,69 @@ mod tests {
         assert_eq!(proj.rhythm, des.rhythm);
     }
 
+    use tempfile::tempdir;
+    use super::ProjectIntf;
+
     #[test]
-    fn sqlite_store_can_work() {
-        use tempfile::tempdir;
-        use super::ProjectIntf;
-
-        let dir = tempdir().unwrap();
-        let mut dir = dir.as_ref().to_path_buf();
+    fn can_undo_set_rhythm() {
+        let mut dir = tempdir().unwrap().as_ref().to_path_buf();
         dir.push("project");
-        let mut store = SqliteUndoStore::<ProjectCmd, Project>::open(dir.clone(), None).unwrap();
+        let mut store = SqliteUndoStore::<ProjectCmd, Project, ()>::open(dir.clone(), None).unwrap();
 
-        store.set_rhythm(Rhythm::new(12, 8)).unwrap();
+        store.set_rhythm(Rhythm::new(12, 8));
         assert_eq!(store.model().rhythm(), Rhythm::new(12, 8));
 
-        store.set_rhythm(Rhythm::new(12, 4)).unwrap();
+        store.set_rhythm(Rhythm::new(12, 4));
         assert_eq!(store.model().rhythm(), Rhythm::new(12, 4));
 
-        store.undo().unwrap();
+        store.undo();
         assert_eq!(store.model().rhythm(), Rhythm::new(12, 8));
 
-        store.undo().unwrap();
+        store.undo();
         assert_eq!(store.model().rhythm(), Rhythm::default());
 
-        store.redo().unwrap();
+        store.redo();
         assert_eq!(store.model().rhythm(), Rhythm::new(12, 8));
 
-        store.set_rhythm(Rhythm::new(16, 8)).unwrap();
+        store.set_rhythm(Rhythm::new(16, 8));
         assert_eq!(store.model().rhythm(), Rhythm::new(16, 8));
 
-        store.undo().unwrap();
+        store.undo();
         assert_eq!(store.model().rhythm(), Rhythm::new(12, 8));
+    }
+
+    #[test]
+    fn can_undo_set_key() {
+        let mut dir = tempdir().unwrap().as_ref().to_path_buf();
+        dir.push("project");
+        let mut store = SqliteUndoStore::<ProjectCmd, Project, ()>::open(dir.clone(), None).unwrap();
+
+        store.set_key(Key::FLAT_1);
+        store.set_key(Key::FLAT_2);
+        assert_eq!(store.model().key, Key::FLAT_2);
+        
+        store.undo();
+        assert_eq!(store.model().key, Key::FLAT_1);
+ 
+        store.redo();
+        assert_eq!(store.model().key, Key::FLAT_2);
+    }
+
+    #[test]
+    fn can_undo_set_grid() {
+        let mut dir = tempdir().unwrap().as_ref().to_path_buf();
+        dir.push("project");
+        let mut store = SqliteUndoStore::<ProjectCmd, Project, ()>::open(dir.clone(), None).unwrap();
+
+        store.set_grid(Grid::from_u32(100).unwrap());
+        store.set_grid(Grid::from_u32(200).unwrap());
+        
+        assert_eq!(store.model().grid.as_u32(), 200);
+
+        store.undo();
+        assert_eq!(store.model().grid.as_u32(), 100);
+
+        store.redo();
+        assert_eq!(store.model().grid.as_u32(), 200);
     }
 }
