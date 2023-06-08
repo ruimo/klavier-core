@@ -41,26 +41,26 @@ pub struct Project {
     rhythm: Rhythm,
     key: Key,
     grid: Grid,
-
+    
     #[serde(skip)]
     undo_store: crate::undo::UndoStore,
-
+    
     #[serde(skip)]
     #[serde(default = "new_note_repo")]
     note_repo: BagStore<u32, Rc<Note>, Option<bool>>, // by start tick.
-
+    
     #[serde(skip)]
     #[serde(default = "new_bar_repo")]
     bar_repo: Store<u32, Bar, Option<bool>>,
-
+    
     #[serde(skip)]
     #[serde(default = "new_tempo_repo")]
     tempo_repo: Store<u32, Tempo, Option<bool>>,
-
+    
     #[serde(skip)]
     #[serde(default = "new_ctrlchg_repo")]
     dumper_repo: Store<u32, CtrlChg, Option<bool>>,
-
+    
     #[serde(skip)]
     #[serde(default = "new_ctrlchg_repo")]
     soft_repo: Store<u32, CtrlChg, Option<bool>>,
@@ -86,61 +86,54 @@ impl Project {
     pub fn note_repo(&self) -> &BagStore<u32, Rc<Note>, Option<bool>> {
         &self.note_repo
     }
-
+    
     pub fn bar_repo(&self) -> &Store<u32, Bar, Option<bool>> {
         &self.bar_repo
     }
-
+    
     pub fn tempo_repo(&self) -> &Store<u32, Tempo, Option<bool>> {
         &self.tempo_repo
     }
-
+    
     pub fn dumper_repo(&self) -> &Store<u32, CtrlChg, Option<bool>> {
         &self.dumper_repo
     }
-
+    
     pub fn rhythm(&self) -> Rhythm {
         self.rhythm
     }
-
+    
     pub fn key(&self) -> Key {
         self.key
     }
-
+    
     pub fn grid(&self) -> Grid {
         self.grid
     }
-
-//    pub fn add_note(&mut self, note: Note) -> Rc<Note> {
-      pub fn add_note(&mut self, note: Note) {
-            let note = Rc::new(note);
+    
+    pub fn add_note(&mut self, note: Note) {
+        let note = Rc::new(note);
         self.note_repo.add(note.start_tick(), note.clone());
         let replenishid_bars = self.replenish_bars();
         self.undo_store.add(
             Undo::Added {
-                added: Models {
-                    notes: vec![note.clone()],
-                    bars: replenishid_bars,
-                    tempos: vec![],
-                    dumpers: vec![],
-                    softs: vec![],
-                },
+                added: Models::empty().with_notes(&[note.clone()]).with_bars(replenishid_bars),
                 removed: Models::empty(),
             }
         );
-//        note
+        //        note
     }
-
+    
     pub fn add_bar(&mut self, bar: Bar) {
         let origin = self.bar_repo.add(bar.start_tick, bar).map(|o| vec![o]).unwrap_or(vec![]);
         self.undo_store.add(
             Undo::Added {
-                added: Models::bar_only(vec![bar]),
-                removed: Models::bar_only(origin),
+                added: Models::empty().with_bars(vec![bar]),
+                removed: Models::empty().with_bars(origin),
             }
         );
     }
-
+    
     pub fn add_tempo(&mut self, tempo: Tempo) {
         let origin = self.tempo_repo.add(tempo.start_tick, tempo).map(|o| vec![o]).unwrap_or(vec![]);
         let replenishid_bars = self.replenish_bars();
@@ -153,11 +146,11 @@ impl Project {
                     dumpers: vec![],
                     softs: vec![],
                 },
-                removed: Models::tempo_only(origin),
+                removed: Models::empty().with_tempos(origin),
             }
         );
     }
-
+    
     pub fn add_dumper(&mut self, ctrl_chg: CtrlChg) {
         let origin = self.dumper_repo.add(ctrl_chg.start_tick, ctrl_chg).map(|o| vec![o]).unwrap_or(vec![]);
         let replenishid_bars = self.replenish_bars();
@@ -170,11 +163,11 @@ impl Project {
                     dumpers: vec![ctrl_chg],
                     softs: vec![],
                 },
-                removed: Models::dumper_only(origin)
+                removed: Models::empty().with_dumpers(origin)
             }
         );
     }
-
+    
     pub fn add_soft(&mut self, ctrl_chg: CtrlChg) {
         let origin = self.soft_repo.add(ctrl_chg.start_tick, ctrl_chg).map(|o| vec![o]).unwrap_or(vec![]);
         let replenishid_bars = self.replenish_bars();
@@ -187,11 +180,11 @@ impl Project {
                     dumpers: vec![],
                     softs: vec![ctrl_chg],
                 },
-                removed: Models::soft_only(origin),
+                removed: Models::empty().with_softs(origin),
             }
         );
     }
-
+    
     pub fn tuplize(&mut self, notes: Vec<Rc<Note>>) {
         if 1 < notes.len() {
             let mut to_remove = BTreeMap::new();
@@ -205,22 +198,22 @@ impl Project {
                 Some(true)
             );
             let replenishid_bars = self.replenish_bars();
-
+            
             self.undo_store.add(
                 Undo::Added {
                     added: Models {
-                        notes: tupled,
+                        notes: Models::unwrap_rc(&tupled),
                         bars: replenishid_bars,
                         tempos: vec![],
                         dumpers: vec![],
                         softs: vec![],
                     },
-                    removed: Models::note_only(notes)
+                    removed: Models::empty().with_notes(&notes)
                 }
             );
         }
     }
-
+    
     pub fn bulk_remove(
         &mut self,
         note_remove: Option<impl bulk_remove::BulkRemove<u32, Rc<Note>> + 'static>,
@@ -236,10 +229,10 @@ impl Project {
             dumpers: vec![],
             softs: vec![],
         };
-
+        
         if let Some(nr) = note_remove {
             for (_k, note) in nr.iter() {
-                undo_remove.notes.push(note);
+                undo_remove.notes.push((*note).clone());
             }
             self.note_repo.bulk_remove(nr);
         }
@@ -267,12 +260,12 @@ impl Project {
             }
             self.soft_repo.bulk_remove(sr);
         }
-
+        
         self.undo_store.add(
             Undo::Removed(undo_remove)
         );
     }
-
+    
     pub fn copy_with(
         &mut self,
         note_changes: Option<impl changes::Changes<u32, Rc<Note>> + 'static>,
@@ -288,7 +281,7 @@ impl Project {
             dumpers: vec![],
             softs: vec![],
         };
-
+        
         let mut undo_removed_rec = Models {
             notes: vec![],
             bars: vec![],
@@ -296,11 +289,11 @@ impl Project {
             dumpers: vec![],
             softs: vec![],
         };
-
+        
         if let Some(note_changes) = note_changes {
             let mut buf = Vec::with_capacity(note_changes.len());
             for (_, (to_key, to)) in note_changes.iter() {
-                undo_rec.notes.push(to.clone());
+                undo_rec.notes.push((*to).clone());
                 buf.push((to_key.clone(), to.clone()));
             }   
             self.note_repo.bulk_add(buf, Some(true));
@@ -337,13 +330,13 @@ impl Project {
             }
             undo_removed_rec.softs = self.soft_repo.bulk_add(buf, Some(true)).iter().map(|(_, s)| *s).collect();
         }
-
+        
         let replenished_bars = self.replenish_bars();
         undo_rec.bars.extend(replenished_bars);
-
+        
         self.undo_store.add(Undo::Added { added: undo_rec, removed: undo_removed_rec });
     }
-
+    
     pub fn change_repo(
         &mut self,
         note_changes: Option<impl changes::Changes<u32, Rc<Note>> + 'static>,
@@ -359,7 +352,7 @@ impl Project {
             dumpers: vec![],
             softs: vec![],
         };
-
+        
         let mut undo_removed = Models::empty();
         if let Some(note_changes) = note_changes {
             for ((_, from), (_, to)) in note_changes.iter() {
@@ -391,31 +384,31 @@ impl Project {
             }
             undo_removed.softs = self.soft_repo.change(soft_changes).iter().map(|(_, s)| *s).collect();
         }
-
+        
         self.undo_store.add(Undo::Changed { changed: undo_changes, removed: undo_removed });
-
+        
         let replenished_bars = self.replenish_bars();
         if ! replenished_bars.is_empty() {
             self.undo_store.add(
                 Undo::Added {
-                    added: Models::bar_only(replenished_bars),
+                    added: Models::empty().with_bars(replenished_bars),
                     removed: Models::empty(),
                 }
             );
         }
     }
-
+    
     pub fn can_undo(&self) -> bool {
         self.undo_store.can_undo()
     }
-
+    
     pub fn undo(&mut self) {
         self.undo_store.freeze(true);
         if let Some(u) = self.undo_store.undo() {
             match u {
                 Undo::Added { added, removed } => {
                     for n in added.notes.iter() {
-                        self.note_repo.remove(&n.start_tick(), n);
+                        self.note_repo.remove(&n.start_tick(), &Rc::new(n.clone()));
                     }
                     for b in added.bars.iter() {
                         self.bar_repo.remove(&b.start_tick);
@@ -429,9 +422,9 @@ impl Project {
                     for s in added.softs.iter() {
                         self.soft_repo.remove(&&s.start_tick);
                     }
-
+                    
                     for n in removed.notes.iter() {
-                        self.note_repo.add(n.start_tick(), n.clone());
+                        self.note_repo.add(n.start_tick(), Rc::new(n.clone()));
                     }
                     for b in removed.bars.iter() {
                         self.bar_repo.add(b.start_tick, *b);
@@ -467,9 +460,9 @@ impl Project {
                         self.soft_repo.remove(&to.start_tick);
                         self.soft_repo.add(from.start_tick, from.clone());
                     }
-
+                    
                     for n in removed.notes.iter() {
-                        self.note_repo.add(n.start_tick(), n.clone());
+                        self.note_repo.add(n.start_tick(), Rc::new(n.clone()));
                     }
                     for b in removed.bars.iter() {
                         self.bar_repo.add(b.start_tick, *b);
@@ -486,7 +479,7 @@ impl Project {
                 },
                 Undo::Removed(remove) => {
                     for n in remove.notes.iter() {
-                        self.note_repo.add(n.start_tick(), n.clone());
+                        self.note_repo.add(n.start_tick(), Rc::new(n.clone()));
                     }
                     for b in remove.bars.iter() {
                         self.bar_repo.add(b.start_tick, b.clone());
@@ -505,26 +498,26 @@ impl Project {
         }
         self.undo_store.freeze(false);
     }
-
+    
     pub fn bar_no(&self, bar: &Bar) -> Option<usize> {
         match self.bar_repo.index(bar.start_tick) {
             Ok(i) => Some(i),
             Err(_) => None,
         }
     }
-
+    
     pub fn tempo_at(&self, tick: u32) -> TempoValue {
         tempo_at(tick, &self.tempo_repo)
     }
-
+    
     pub fn dumper_at(&self, tick: u32) -> Velocity {
         ctrl_chg_at(tick, &self.dumper_repo)
     }
-
+    
     pub fn soft_at(&self, tick: u32) -> Velocity {
         ctrl_chg_at(tick, &self.soft_repo)
     }
-
+    
     pub fn clear_model_events(&mut self) {
         self.note_repo.clear_events();
         self.bar_repo.clear_events();
@@ -532,27 +525,27 @@ impl Project {
         self.dumper_repo.clear_events();
         self.soft_repo.clear_events();
     }
-
+    
     pub fn bar_events(&self) -> &Vec<StoreEvent<u32, Bar, Option<bool>>> {
         self.bar_repo.events()
     }
-
+    
     pub fn tempo_events(&self) -> &Vec<StoreEvent<u32, Tempo, Option<bool>>> {
         self.tempo_repo.events()
     }
-
+    
     pub fn dumper_events(&self) -> &Vec<StoreEvent<u32, CtrlChg, Option<bool>>> {
         self.dumper_repo.events()
     }
-
+    
     pub fn soft_events(&self) -> &Vec<StoreEvent<u32, CtrlChg, Option<bool>>> {
         self.soft_repo.events()
     }
-
+    
     pub fn note_events(&self) -> &Vec<BagStoreEvent<u32, Rc<Note>, Option<bool>>> {
         self.note_repo.events()
     }
-
+    
     pub fn location_to_tick(&self, loc: Location) -> Result<u32, LocationError> {
         if loc.bar_no() == 0 {
             if (u32::MAX as usize) < loc.offset() {
@@ -576,7 +569,7 @@ impl Project {
             }
         }
     }
-
+    
     pub fn tick_to_location(&self, tick: u32) -> Location {
         if self.bar_repo.len() == 0 {
             Location::new(0, tick as usize)
@@ -584,16 +577,16 @@ impl Project {
             match self.bar_repo.find(&tick) {
                 Ok(idx) => Location::new(idx + 1, 0),
                 Err(idx) =>
-                    if idx == 0 {
-                        Location::new(0, tick as usize)
-                    } else {
-                        let (_, bar) = self.bar_repo[idx - 1];
-                        Location::new(idx, (tick - bar.start_tick) as usize)
-                    },
+                if idx == 0 {
+                    Location::new(0, tick as usize)
+                } else {
+                    let (_, bar) = self.bar_repo[idx - 1];
+                    Location::new(idx, (tick - bar.start_tick) as usize)
+                },
             }
         }
     }
-
+    
     pub fn rhythm_at(&self, tick: u32) -> Rhythm {
         let idx = match self.bar_repo.index(tick) {
             Ok(t) => t,
@@ -606,53 +599,53 @@ impl Project {
                 return rhythm;
             }
         }
-
+        
         self.rhythm
     }
-
+    
     #[inline]
     fn last_bar(&self) -> Option<Bar> {
         self.bar_repo.peek_last().map(|(_, bar)| bar.clone())
     }
-
+    
     fn note_max_end_tick(&self) -> Option<u32> {
         if self.note_repo.is_empty() { return None; }
         let mut start_tick =
-            self.note_repo.peek_last().map(|t| { t.0.clone() }).unwrap_or(0) as i64 - *Note::LONGEST_TICK_LEN as i64;
+        self.note_repo.peek_last().map(|t| { t.0.clone() }).unwrap_or(0) as i64 - *Note::LONGEST_TICK_LEN as i64;
         if start_tick < 0 { start_tick = 0; }
         let mut max_tick_loc = 0;
         for (tick, note) in self.note_repo.range(start_tick as u32..) {
             let end_tick = tick + note.tick_len();
             max_tick_loc = max_tick_loc.max(end_tick);
         }
-
+        
         Some(max_tick_loc)
     }
-
+    
     #[inline]
     fn tempo_max_tick(&self) -> Option<u32> {
         self.tempo_repo.peek_last().map(|t| t.0)
     }
-
+    
     #[inline]
     fn dumper_max_tick(&self) -> Option<u32> {
         self.dumper_repo.peek_last().map(|t| t.0)
     }
-
+    
     #[inline]
     fn soft_max_tick(&self) -> Option<u32> {
         self.soft_repo.peek_last().map(|t| t.0)
     }
-
+    
     /// Returns replenished bars.
     fn replenish_bars(&mut self) -> Vec<Bar> {
         let mut bar_tick = self.last_bar().map(|b| b.start_tick).unwrap_or(0);
         let max_end_tick = 
-            self.note_max_end_tick().unwrap_or(0)
-            .max(self.tempo_max_tick().unwrap_or(0))
-            .max(self.dumper_max_tick().unwrap_or(0))
-            .max(self.soft_max_tick().unwrap_or(0));
-
+        self.note_max_end_tick().unwrap_or(0)
+        .max(self.tempo_max_tick().unwrap_or(0))
+        .max(self.dumper_max_tick().unwrap_or(0))
+        .max(self.soft_max_tick().unwrap_or(0));
+        
         let mut replenished_bars: Vec<Bar> = vec![];
         if max_end_tick <= bar_tick { return replenished_bars; }
         let bar_tick_len = self.rhythm_at(bar_tick).tick_len();
@@ -725,11 +718,12 @@ enum ProjectCmd {
     SetRhythm(Rhythm, Rhythm),
     SetKey(Key, Key),
     SetGrid(Grid, Grid),
+    AddedRemoved { added: Models, removed: Models },
 }
 
 impl Cmd for ProjectCmd {
     type Model = Project;
-
+    
     fn undo(&self, proj: &mut Self::Model) {
         match self {
             ProjectCmd::SetRhythm(old_rhythm, _) => {
@@ -741,9 +735,42 @@ impl Cmd for ProjectCmd {
             ProjectCmd::SetGrid(old_grid, _) => {
                 proj.grid = *old_grid;
             },
+            ProjectCmd::AddedRemoved { added, removed } => {
+                for n in added.notes.iter() {
+                    proj.note_repo.remove(&n.start_tick(), &Rc::new((*n).clone()));
+                }
+                for b in added.bars.iter() {
+                    proj.bar_repo.remove(&b.start_tick);
+                }
+                for t in added.tempos.iter() {
+                    proj.tempo_repo.remove(&t.start_tick);
+                }
+                for d in added.dumpers.iter() {
+                    proj.dumper_repo.remove(&d.start_tick);
+                }
+                for s in added.softs.iter() {
+                    proj.soft_repo.remove(&&s.start_tick);
+                }
+                
+                for n in removed.notes.iter() {
+                    proj.note_repo.add(n.start_tick(), Rc::new((*n).clone()));
+                }
+                for b in removed.bars.iter() {
+                    proj.bar_repo.add(b.start_tick, *b);
+                }
+                for t in removed.tempos.iter() {
+                    proj.tempo_repo.add(t.start_tick, *t);
+                }
+                for d in removed.dumpers.iter() {
+                    proj.dumper_repo.add(d.start_tick, *d);
+                }
+                for s in removed.softs.iter() {
+                    proj.soft_repo.add(s.start_tick, *s);
+                }
+            },
         }
     }
-
+    
     fn redo(&self, proj: &mut Self::Model) {
         match self {
             ProjectCmd::SetRhythm(_, new_rhythm) => {
@@ -755,6 +782,39 @@ impl Cmd for ProjectCmd {
             ProjectCmd::SetGrid(_, new_grid) => {
                 proj.grid = *new_grid;
             }
+            ProjectCmd::AddedRemoved { added, removed } => {
+                for n in removed.notes.iter() {
+                    proj.note_repo.remove(&n.start_tick(), &Rc::new(n.clone()));
+                }
+                for b in removed.bars.iter() {
+                    proj.bar_repo.remove(&b.start_tick);
+                }
+                for t in removed.tempos.iter() {
+                    proj.tempo_repo.remove(&t.start_tick);
+                }
+                for d in removed.dumpers.iter() {
+                    proj.dumper_repo.remove(&d.start_tick);
+                }
+                for s in removed.softs.iter() {
+                    proj.soft_repo.remove(&&s.start_tick);
+                }
+                
+                for n in added.notes.iter() {
+                    proj.note_repo.add(n.start_tick(), Rc::new(n.clone()));
+                }
+                for b in added.bars.iter() {
+                    proj.bar_repo.add(b.start_tick, *b);
+                }
+                for t in added.tempos.iter() {
+                    proj.tempo_repo.add(t.start_tick, *t);
+                }
+                for d in added.dumpers.iter() {
+                    proj.dumper_repo.add(d.start_tick, *d);
+                }
+                for s in added.softs.iter() {
+                    proj.soft_repo.add(s.start_tick, *s);
+                }
+            },
         }
     }
 }
@@ -762,45 +822,153 @@ impl Cmd for ProjectCmd {
 impl SerializableCmd for ProjectCmd {
 }
 
+enum ProjectCmdErr {
+    NoOp,
+}
+
 trait ProjectIntf {
     fn set_rhythm(&mut self, rhythm: Rhythm);
     fn set_key(&mut self, key: Key);
     fn set_grid(&mut self, key: Grid);
+    fn add_note(&mut self, note: Note);
+    fn add_bar(&mut self, bar: Bar);
+    fn add_tempo(&mut self, bar: Tempo);
+    fn add_dumper(&mut self, dumper: CtrlChg);
+    fn add_soft(&mut self, soft: CtrlChg);
+    fn tuplize(&mut self, notes: Vec<Rc<Note>>);
 }
 
-impl ProjectIntf for SqliteUndoStore::<ProjectCmd, Project, ()> {
+impl ProjectIntf for SqliteUndoStore::<ProjectCmd, Project, ProjectCmdErr> {
     fn set_rhythm(&mut self, rhythm: Rhythm) {
         self.add_cmd(ProjectCmd::SetRhythm(self.model().rhythm, rhythm));
     }
+    
     fn set_key(&mut self, key: Key) {
         self.add_cmd(ProjectCmd::SetKey(self.model().key, key));
     }
+    
     fn set_grid(&mut self, grid: Grid) {
         self.add_cmd(ProjectCmd::SetGrid(self.model().grid, grid));
+    }
+    
+    fn add_note(&mut self, note: Note) {
+        let note = Rc::new(note);
+        
+        let _ = self.mutate(&mut |proj| {
+            proj.note_repo.add(note.start_tick(), note.clone());
+            let replenishid_bars = proj.replenish_bars();
+            Ok(
+                ProjectCmd::AddedRemoved {
+                    added: Models::empty().with_notes(&[note.clone()]).with_bars(replenishid_bars),
+                    removed: Models::empty(),
+                }
+            )
+        });
+    }
+    
+    fn add_bar(&mut self, bar: Bar) {
+        let _ = self.mutate(&mut | proj| {
+            let origin = proj.bar_repo.add(bar.start_tick, bar).map(|o| vec![o]).unwrap_or(vec![]);
+            
+            Ok(
+                ProjectCmd::AddedRemoved {
+                    added: Models::empty().with_bars(vec![bar]),
+                    removed: Models::empty().with_bars(origin),
+                }
+            )
+        });
+    }
+    
+    fn add_tempo(&mut self, tempo: Tempo) {
+        let _ = self.mutate(&mut |proj| {
+            let origin = proj.tempo_repo.add(tempo.start_tick, tempo).map(|o| vec![o]).unwrap_or(vec![]);
+            let replenishid_bars = proj.replenish_bars();
+            Ok(
+                ProjectCmd::AddedRemoved {
+                    added: Models::empty().with_bars(replenishid_bars).with_tempos(vec![tempo]),
+                    removed: Models::empty().with_tempos(origin),
+                }
+                
+            )
+        });
+    }
+    
+    fn add_dumper(&mut self, dumper: CtrlChg) {
+        let _ = self.mutate(&mut |proj| {
+            let origin = proj.dumper_repo.add(dumper.start_tick, dumper).map(|o| vec![o]).unwrap_or(vec![]);
+            let replenishid_bars = proj.replenish_bars();
+            Ok(
+                ProjectCmd::AddedRemoved {
+                    added: Models::empty().with_bars(replenishid_bars).with_dumpers(vec![dumper]),
+                    removed: Models::empty().with_dumpers(origin),
+                }
+            )
+        });
+    }
+    
+    fn add_soft(&mut self, soft: CtrlChg) {
+        let _ = self.mutate(&mut |proj| {
+            let origin = proj.soft_repo.add(soft.start_tick, soft).map(|o| vec![o]).unwrap_or(vec![]);
+            let replenishid_bars = proj.replenish_bars();
+            Ok(
+                ProjectCmd::AddedRemoved {
+                    added: Models::empty().with_bars(replenishid_bars).with_softs(vec![soft]),
+                    removed: Models::empty().with_softs(origin),
+                }
+            )
+        });
+    }
+    
+    fn tuplize(&mut self, notes: Vec<Rc<Note>>) {
+        let _ = self.mutate(&mut |proj| {
+            if 1 < notes.len() {
+                let mut to_remove = BTreeMap::new();
+                for n in notes.iter() {
+                    to_remove.insert(n.start_tick(), vec![n.clone()]);
+                }
+                let tupled = tuple::tuplize(notes.clone());
+                proj.note_repo.remove_all(to_remove);
+                proj.note_repo.bulk_add(
+                    tupled.iter().map(|n| (n.start_tick(), n.clone())).collect(),
+                    Some(true)
+                );
+                let replenishid_bars = proj.replenish_bars();
+                
+                Ok(
+                    ProjectCmd::AddedRemoved {
+                        added: Models::empty().with_notes(&tupled).with_bars(replenishid_bars),
+                        removed: Models::empty().with_notes(&notes),
+                    }
+                )
+            } else {
+                Err(ProjectCmdErr::NoOp)
+            }
+        });
+        
     }
 }
 
 #[cfg(test)]
 mod tests {
     use std::rc::Rc;
-
+    
     use klavier_helper::store::Store;
     use serdo::undo_store::{SqliteUndoStore, UndoStore};
-
-    use crate::{tempo::{Tempo, TempoValue}, project::{tempo_at, LocationError, ProjectCmd}, note::Note, solfa::Solfa, octave::Octave, sharp_flat::SharpFlat, pitch::Pitch, duration::{Duration, Numerator, Denominator, Dots}, velocity::Velocity, trimmer::{Trimmer, RateTrimmer}, bar::{Bar, DcFine, EndOrRegion, RepeatStart}, location::Location, rhythm::Rhythm, ctrl_chg::CtrlChg, key::Key, grid::Grid};
-
+    
+    use crate::{tempo::{Tempo, TempoValue}, project::{tempo_at, LocationError, ProjectCmd, ProjectCmdErr}, note::Note, solfa::Solfa, octave::Octave, sharp_flat::SharpFlat, pitch::Pitch, duration::{Duration, Numerator, Denominator, Dots}, velocity::Velocity, trimmer::{Trimmer, RateTrimmer}, bar::{Bar, DcFine, EndOrRegion, RepeatStart}, location::Location, rhythm::Rhythm, ctrl_chg::CtrlChg, key::Key, grid::Grid};
+    
     use super::{DEFAULT_TEMPO, Project};
     
     #[test]
     fn tempo() {
         let mut store: Store<u32, Tempo, Option<bool>> = Store::new(false);
         assert_eq!(tempo_at(0, &store), DEFAULT_TEMPO);
-
+        
         store.add(10, Tempo { start_tick: 10, value: TempoValue::new(100) });
         assert_eq!(tempo_at(0, &store), DEFAULT_TEMPO);
         assert_eq!(tempo_at(10, &store), TempoValue::new(100));
         assert_eq!(tempo_at(11, &store), TempoValue::new(100));
-
+        
         store.add(20, Tempo { start_tick: 20, value: TempoValue::new(200) });
         assert_eq!(tempo_at(0, &store), DEFAULT_TEMPO);
         assert_eq!(tempo_at(10, &store), TempoValue::new(100));
@@ -809,7 +977,7 @@ mod tests {
         assert_eq!(tempo_at(20, &store), TempoValue::new(200));
         assert_eq!(tempo_at(100, &store), TempoValue::new(200));
     }
-
+    
     #[test]
     fn undo_note_addition() {
         let mut proj = Project::default();
@@ -824,14 +992,14 @@ mod tests {
             RateTrimmer::ONE,
             Trimmer::ZERO
         );
-
+        
         let _ = proj.add_note(note);
         assert_eq!(proj.note_repo().len(), 1);
-
+        
         proj.undo();
         assert_eq!(proj.note_repo().len(), 0);
     }
-
+    
     #[test]
     fn undo_bar_addition() {
         let mut proj = Project::default();
@@ -848,7 +1016,7 @@ mod tests {
         proj.undo();
         assert_eq!(proj.bar_repo().len(), 0);
     }
-
+    
     #[test]
     fn location_to_tick() {
         let mut proj = Project::default();
@@ -857,7 +1025,7 @@ mod tests {
         assert_eq!(proj.location_to_tick(Location::new(0, u32::MAX as usize)), Ok(u32::MAX));
         assert_eq!(proj.location_to_tick(Location::new(0, u32::MAX as usize + 1)), Err(LocationError::Overflow));
         assert_eq!(proj.location_to_tick(Location::new(1, 1)), Err(LocationError::Overflow));
-
+        
         let bar = Bar::new(
             100,
             None,
@@ -867,14 +1035,14 @@ mod tests {
             RepeatStart::Null
         );
         proj.add_bar(bar);
-
+        
         assert_eq!(proj.location_to_tick(Location::new(0, 0)), Ok(0));
         assert_eq!(proj.location_to_tick(Location::new(0, 1)), Ok(1));
         assert_eq!(proj.location_to_tick(Location::new(1, 1)), Ok(101));
         assert_eq!(proj.location_to_tick(Location::new(1, (u32::MAX as usize) - 100)), Ok(u32::MAX));
         assert_eq!(proj.location_to_tick(Location::new(1, (u32::MAX as usize) - 99)), Err(LocationError::Overflow));
         assert_eq!(proj.location_to_tick(Location::new(2, 0)), Err(LocationError::Overflow));
-
+        
         let bar = Bar::new(
             1000,
             None,
@@ -884,20 +1052,20 @@ mod tests {
             RepeatStart::Null
         );
         proj.add_bar(bar);
-
+        
         assert_eq!(proj.location_to_tick(Location::new(0, 0)), Ok(0));
         assert_eq!(proj.location_to_tick(Location::new(0, 1)), Ok(1));
         assert_eq!(proj.location_to_tick(Location::new(1, 1)), Ok(101));
         assert_eq!(proj.location_to_tick(Location::new(2, 0)), Ok(1000));
     }
-
+    
     #[test]
     fn tick_to_location() {
         let mut proj = Project::default();
         assert_eq!(proj.tick_to_location(0), Location::new(0, 0));
         assert_eq!(proj.tick_to_location(100), Location::new(0, 100));
         assert_eq!(proj.tick_to_location(u32::MAX), Location::new(0, u32::MAX as usize));
-
+        
         let bar = Bar::new(
             100,
             None,
@@ -907,12 +1075,12 @@ mod tests {
             RepeatStart::Null
         );
         proj.add_bar(bar);
-
+        
         assert_eq!(proj.tick_to_location(0), Location::new(0, 0));
         assert_eq!(proj.tick_to_location(99), Location::new(0, 99));
         assert_eq!(proj.tick_to_location(100), Location::new(1, 0));
         assert_eq!(proj.tick_to_location(u32::MAX), Location::new(1, (u32::MAX - 100) as usize));
-
+        
         let bar = Bar::new(
             1000,
             None,
@@ -922,56 +1090,56 @@ mod tests {
             RepeatStart::Null
         );
         proj.add_bar(bar);
-
+        
         assert_eq!(proj.tick_to_location(0), Location::new(0, 0));
         assert_eq!(proj.tick_to_location(99), Location::new(0, 99));
         assert_eq!(proj.tick_to_location(999), Location::new(1, 899));
         assert_eq!(proj.tick_to_location(1000), Location::new(2, 0));
         assert_eq!(proj.tick_to_location(u32::MAX), Location::new(2, (u32::MAX - 1000) as usize));
     }
-
+    
     #[test]
     fn rhythm_at() {
         let mut proj = Project::default();
         proj.rhythm = Rhythm::new(6, 8);
         assert_eq!(proj.last_bar(), None);
-
+        
         assert_eq!(proj.rhythm_at(500), Rhythm::new(6, 8));
         assert_eq!(proj.rhythm_at(0), Rhythm::new(6, 8));
-
+        
         let bar0 = Bar::new(
             100, None,
             None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null
         );
         proj.add_bar(bar0);
         assert_eq!(proj.last_bar(), Some(bar0));
-
+        
         assert_eq!(proj.rhythm_at(0), Rhythm::new(6, 8));
         assert_eq!(proj.rhythm_at(99), Rhythm::new(6, 8));
         assert_eq!(proj.rhythm_at(100), Rhythm::new(6, 8));
         assert_eq!(proj.rhythm_at(101), Rhythm::new(6, 8));
-
+        
         let bar1 = Bar::new(
             200, Some(Rhythm::new(3, 4)),
             None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null
         );
         proj.add_bar(bar1);
         assert_eq!(proj.last_bar(), Some(bar1));
-
+        
         let bar2 = Bar::new(
             300, None,
             None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null
         );
         proj.add_bar(bar2);
         assert_eq!(proj.last_bar(), Some(bar2));
-
+        
         let bar3 = Bar::new(
             400, Some(Rhythm::new(4, 4)),
             None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null
         );
         proj.add_bar(bar3);
         assert_eq!(proj.last_bar(), Some(bar3));
-
+        
         assert_eq!(proj.rhythm_at(0), Rhythm::new(6, 8));
         assert_eq!(proj.rhythm_at(99), Rhythm::new(6, 8));
         assert_eq!(proj.rhythm_at(100), Rhythm::new(6, 8));
@@ -986,13 +1154,13 @@ mod tests {
         assert_eq!(proj.rhythm_at(400), Rhythm::new(4, 4));
         assert_eq!(proj.rhythm_at(401), Rhythm::new(4, 4));
     }
-
+    
     #[test]
     fn note_max_tick_loc() {
         let mut proj = Project::default();
         let pitch = Pitch::new(Solfa::C, Octave::Oct0, SharpFlat::Null);
         assert_eq!(proj.note_max_end_tick(), None);
-
+        
         let note0 = Note::new( // end tick: 100 + 240 * 1.5 = 460
             100, pitch,
             Duration::new(Numerator::Quarter, Denominator::from_value(2).unwrap(), Dots::ONE),
@@ -1000,11 +1168,11 @@ mod tests {
             RateTrimmer::new(1.0, 1.0, 1.0, 1.0),
             Trimmer::ZERO
         );
-
+        
         let end_tick0 = note0.base_start_tick() + note0.tick_len();
         proj.add_note(note0);
         assert_eq!(proj.note_max_end_tick(), Some(end_tick0));
-
+        
         let note1 = Note::new( // end tick: 100 + 960 * 1.5 = 1540
             100, pitch,
             Duration::new(Numerator::Whole, Denominator::from_value(2).unwrap(), Dots::ONE),
@@ -1012,10 +1180,10 @@ mod tests {
             RateTrimmer::new(1.0, 1.0, 1.0, 1.0),
             Trimmer::ZERO
         );
-
+        
         proj.add_note(note1.clone());
         assert_eq!(proj.note_max_end_tick(), Some(note1.base_start_tick() + note1.tick_len()));
-
+        
         let _ = proj.add_note(
             Note::new( // end tick: 200 + 120 * 2.5 = 440
                 200, pitch,
@@ -1025,7 +1193,7 @@ mod tests {
                 Trimmer::ZERO
             )
         );
-
+        
         assert_eq!(proj.note_max_end_tick(), Some(note1.base_start_tick() + note1.tick_len()));
     }
     
@@ -1048,7 +1216,7 @@ mod tests {
         proj.replenish_bars();
         assert_eq!(proj.bar_repo().len(), 1);
         assert_eq!(proj.bar_repo().peek_last().unwrap().0, 960);
- 
+        
         let _ = proj.add_note(
             Note::new(
                 0, pitch,
@@ -1061,7 +1229,7 @@ mod tests {
         proj.replenish_bars();
         assert_eq!(proj.bar_repo().len(), 1);
         assert_eq!(proj.bar_repo().peek_last().unwrap().0, 960);
-
+        
         let _ = proj.add_note(
             Note::new(
                 960, pitch,
@@ -1074,38 +1242,38 @@ mod tests {
         proj.replenish_bars();
         assert_eq!(proj.bar_repo().len(), 3);
         assert_eq!(proj.bar_repo().peek_last().unwrap().0, 960 * 3);
-
+        
         let _ = proj.add_tempo(Tempo::new(960*3, 200));
         proj.replenish_bars();
         assert_eq!(proj.bar_repo().len(), 3);
         assert_eq!(proj.bar_repo().peek_last().unwrap().0, 960 * 3);
-
+        
         let _ = proj.add_tempo(Tempo::new(960 * 3 + 1, 200));
         proj.replenish_bars();
         assert_eq!(proj.bar_repo().len(), 4);
         assert_eq!(proj.bar_repo().peek_last().unwrap().0, 960 * 4);
-
+        
         let _ = proj.add_dumper(CtrlChg::new(960 * 4, Velocity::new(20)));
         proj.replenish_bars();
         assert_eq!(proj.bar_repo().len(), 4);
         assert_eq!(proj.bar_repo().peek_last().unwrap().0, 960 * 4);
-
+        
         let _ = proj.add_dumper(CtrlChg::new(960 * 4 + 1, Velocity::new(20)));
         proj.replenish_bars();
         assert_eq!(proj.bar_repo().len(), 5);
         assert_eq!(proj.bar_repo().peek_last().unwrap().0, 960 * 5);
-
+        
         let _ = proj.add_soft(CtrlChg::new(960 * 5, Velocity::new(20)));
         proj.replenish_bars();
         assert_eq!(proj.bar_repo().len(), 5);
         assert_eq!(proj.bar_repo().peek_last().unwrap().0, 960 * 5);
-
+        
         let _ = proj.add_dumper(CtrlChg::new(960 * 5 + 1, Velocity::new(20)));
         proj.replenish_bars();
         assert_eq!(proj.bar_repo().len(), 6);
         assert_eq!(proj.bar_repo().peek_last().unwrap().0, 960 * 6);
     }
-
+    
     #[test]
     fn tuplize() {
         let mut proj = Project::default();
@@ -1118,7 +1286,7 @@ mod tests {
             Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO
         );
         proj.add_note(note0.clone());
-
+        
         let note1 = Note::new(
             120,
             Pitch::new(Solfa::C, Octave::Oct4, SharpFlat::Null),
@@ -1128,7 +1296,7 @@ mod tests {
             Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO
         );
         proj.add_note(note1.clone());
-
+        
         let note2 = Note::new(
             150,
             Pitch::new(Solfa::C, Octave::Oct4, SharpFlat::Null),
@@ -1139,117 +1307,309 @@ mod tests {
         );
         proj.add_note(note2.clone());
         assert_eq!(proj.note_repo().len(), 3);
-
+        
         proj.tuplize(vec![Rc::new(note0), Rc::new(note1), Rc::new(note2)]);
         assert_eq!(proj.note_repo().len(), 3);
-
+        
         let mut z = proj.note_repo().iter();
         let (tick, note) = z.next().unwrap();
         assert_eq!(*tick, 100);
         assert_eq!(note.duration(), Duration::new(Numerator::N8th, Denominator::from_value(3).unwrap(), Dots::ZERO));
-
+        
         let (tick, note) = z.next().unwrap();
         assert_eq!(*tick, 100 + 80);
         assert_eq!(note.duration(), Duration::new(Numerator::N8th, Denominator::from_value(3).unwrap(), Dots::ZERO));
-
+        
         let (tick, note) = z.next().unwrap();
         assert_eq!(*tick, 100 + 80 * 2);
         assert_eq!(note.duration(), Duration::new(Numerator::N8th, Denominator::from_value(3).unwrap(), Dots::ZERO));
-
+        
         proj.undo();
         assert_eq!(proj.note_repo().len(), 3);
-
+        
         let mut z = proj.note_repo().iter();
         let (tick, note) = z.next().unwrap();
         assert_eq!(*tick, 100);
         assert_eq!(note.duration(), Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO));
-
+        
         let (tick, note) = z.next().unwrap();
         assert_eq!(*tick, 120);
         assert_eq!(note.duration(), Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO));
-
+        
         let (tick, note) = z.next().unwrap();
         assert_eq!(*tick, 150);
         assert_eq!(note.duration(), Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO));
     }
-
+    
     #[test]
     fn can_serialize_project() {
         let mut proj = Project::default();
         proj.key = Key::FLAT_2;
         proj.rhythm = Rhythm::new(3, 4);
-
+        
         let ser = bincode::serialize(&proj).unwrap();
-
+        
         let des: Project = bincode::deserialize(&ser).unwrap();
-
+        
         assert_eq!(proj.key, des.key);
         assert_eq!(proj.rhythm, des.rhythm);
     }
-
+    
     use tempfile::tempdir;
     use super::ProjectIntf;
-
+    
     #[test]
     fn can_undo_set_rhythm() {
         let mut dir = tempdir().unwrap().as_ref().to_path_buf();
         dir.push("project");
-        let mut store = SqliteUndoStore::<ProjectCmd, Project, ()>::open(dir.clone(), None).unwrap();
-
+        let mut store = SqliteUndoStore::<ProjectCmd, Project, ProjectCmdErr>::open(dir.clone(), None).unwrap();
+        
         store.set_rhythm(Rhythm::new(12, 8));
         assert_eq!(store.model().rhythm(), Rhythm::new(12, 8));
-
+        
         store.set_rhythm(Rhythm::new(12, 4));
         assert_eq!(store.model().rhythm(), Rhythm::new(12, 4));
-
+        
         store.undo();
         assert_eq!(store.model().rhythm(), Rhythm::new(12, 8));
-
+        
         store.undo();
         assert_eq!(store.model().rhythm(), Rhythm::default());
-
+        
         store.redo();
         assert_eq!(store.model().rhythm(), Rhythm::new(12, 8));
-
+        
         store.set_rhythm(Rhythm::new(16, 8));
         assert_eq!(store.model().rhythm(), Rhythm::new(16, 8));
-
+        
         store.undo();
         assert_eq!(store.model().rhythm(), Rhythm::new(12, 8));
     }
-
+    
     #[test]
     fn can_undo_set_key() {
         let mut dir = tempdir().unwrap().as_ref().to_path_buf();
         dir.push("project");
-        let mut store = SqliteUndoStore::<ProjectCmd, Project, ()>::open(dir.clone(), None).unwrap();
-
+        let mut store = SqliteUndoStore::<ProjectCmd, Project, ProjectCmdErr>::open(dir.clone(), None).unwrap();
+        
         store.set_key(Key::FLAT_1);
         store.set_key(Key::FLAT_2);
         assert_eq!(store.model().key, Key::FLAT_2);
         
         store.undo();
         assert_eq!(store.model().key, Key::FLAT_1);
- 
+        
         store.redo();
         assert_eq!(store.model().key, Key::FLAT_2);
     }
-
+    
     #[test]
     fn can_undo_set_grid() {
         let mut dir = tempdir().unwrap().as_ref().to_path_buf();
         dir.push("project");
-        let mut store = SqliteUndoStore::<ProjectCmd, Project, ()>::open(dir.clone(), None).unwrap();
-
+        let mut store = SqliteUndoStore::<ProjectCmd, Project, ProjectCmdErr>::open(dir.clone(), None).unwrap();
+        
         store.set_grid(Grid::from_u32(100).unwrap());
         store.set_grid(Grid::from_u32(200).unwrap());
         
         assert_eq!(store.model().grid.as_u32(), 200);
-
+        
         store.undo();
         assert_eq!(store.model().grid.as_u32(), 100);
-
+        
         store.redo();
         assert_eq!(store.model().grid.as_u32(), 200);
+    }
+    
+    #[test]
+    fn can_undo_add_note() {
+        let mut dir = tempdir().unwrap().as_ref().to_path_buf();
+        dir.push("project");
+        let mut store = SqliteUndoStore::<ProjectCmd, Project, ProjectCmdErr>::open(dir.clone(), None).unwrap();
+        
+        let note0 = Note::new(
+            100,
+            Pitch::new(Solfa::C, Octave::Oct4, SharpFlat::Null),
+            Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
+            false, false,
+            Velocity::new(64),
+            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO
+        );
+        
+        store.add_note(note0.clone());
+        
+        assert_eq!(store.model().note_repo.len(), 1);
+        assert_eq!(store.model().bar_repo.len(), 1); // bar is replenished.
+        
+        store.undo();
+        assert_eq!(store.model().note_repo.len(), 0);
+        assert_eq!(store.model().bar_repo.len(), 0);
+        
+        store.redo();
+        assert_eq!(store.model().note_repo.len(), 1);
+        assert_eq!(store.model().note_repo.get(100u32), &vec![Rc::new(note0.clone())]);
+        assert_eq!(store.model().bar_repo.len(), 1);
+    }
+    
+    #[test]
+    fn can_undo_add_bar() {
+        let mut dir = tempdir().unwrap().as_ref().to_path_buf();
+        dir.push("project");
+        let mut store = SqliteUndoStore::<ProjectCmd, Project, ProjectCmdErr>::open(dir.clone(), None).unwrap();
+        
+        let bar0 = Bar::new(
+            1000, Some(Rhythm::new(3, 4)),
+            None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null
+        );
+        
+        store.add_bar(bar0);
+        assert_eq!(store.model().bar_repo.len(), 1); // with replenished bar
+        
+        store.undo();
+        assert_eq!(store.model().bar_repo.len(), 0);
+        
+        store.redo();
+        assert_eq!(store.model().bar_repo.len(), 1);
+        assert_eq!(store.model().bar_repo[0], (1000u32, bar0))
+    }
+    
+    #[test]
+    fn can_undo_add_tempo() {
+        let mut dir = tempdir().unwrap().as_ref().to_path_buf();
+        dir.push("project");
+        let mut store = SqliteUndoStore::<ProjectCmd, Project, ProjectCmdErr>::open(dir.clone(), None).unwrap();
+        
+        let tempo0 = Tempo::new(200, 200);
+        
+        store.add_tempo(tempo0);
+        assert_eq!(store.model().tempo_repo.len(), 1);
+        assert_eq!(store.model().bar_repo.len(), 1); // bar is replenished.
+        
+        store.undo();
+        assert_eq!(store.model().tempo_repo.len(), 0);
+        assert_eq!(store.model().bar_repo.len(), 0);
+        
+        store.redo();
+        assert_eq!(store.model().tempo_repo.len(), 1);
+        assert_eq!(store.model().bar_repo.len(), 1);
+        assert_eq!(store.model().tempo_repo[0], (200u32, tempo0));
+    }
+    
+    #[test]
+    fn can_undo_add_dumper() {
+        let mut dir = tempdir().unwrap().as_ref().to_path_buf();
+        dir.push("project");
+        let mut store = SqliteUndoStore::<ProjectCmd, Project, ProjectCmdErr>::open(dir.clone(), None).unwrap();
+        
+        let dumper = CtrlChg::new(200, Velocity::new(20));
+        store.add_dumper(dumper);
+        
+        assert_eq!(store.model().dumper_repo.len(), 1);
+        assert_eq!(store.model().bar_repo.len(), 1); // bar is replenished.
+        
+        store.undo();
+        assert_eq!(store.model().dumper_repo.len(), 0);
+        assert_eq!(store.model().bar_repo.len(), 0);
+        
+        store.redo();
+        assert_eq!(store.model().dumper_repo.len(), 1);
+        assert_eq!(store.model().bar_repo.len(), 1);
+        assert_eq!(store.model().dumper_repo[0], (200u32, dumper));
+    }
+    
+    #[test]
+    fn can_undo_add_soft() {
+        let mut dir = tempdir().unwrap().as_ref().to_path_buf();
+        dir.push("project");
+        let mut store = SqliteUndoStore::<ProjectCmd, Project, ProjectCmdErr>::open(dir.clone(), None).unwrap();
+        
+        let soft = CtrlChg::new(200, Velocity::new(20));
+        store.add_soft(soft);
+        
+        assert_eq!(store.model().soft_repo.len(), 1);
+        assert_eq!(store.model().bar_repo.len(), 1); // bar is replenished.
+        
+        store.undo();
+        assert_eq!(store.model().soft_repo.len(), 0);
+        assert_eq!(store.model().bar_repo.len(), 0);
+        
+        store.redo();
+        assert_eq!(store.model().soft_repo.len(), 1);
+        assert_eq!(store.model().bar_repo.len(), 1);
+        assert_eq!(store.model().soft_repo[0], (200u32, soft));
+    }
+    
+    #[test]
+    fn can_undo_tuplize() {
+        let mut dir = tempdir().unwrap().as_ref().to_path_buf();
+        dir.push("project");
+        let mut store = SqliteUndoStore::<ProjectCmd, Project, ProjectCmdErr>::open(dir.clone(), None).unwrap();
+        
+        // Do nothing for empty.
+        store.tuplize(vec![]);
+        assert_eq!(store.model().soft_repo.len(), 0);
+        assert_eq!(store.model().bar_repo.len(), 0);
+        
+        let note0 = Note::new(
+            100,
+            Pitch::new(Solfa::C, Octave::Oct4, SharpFlat::Null),
+            Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
+            false, false,
+            Velocity::new(64),
+            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO
+        );
+        store.add_note(note0.clone());
+        
+        // Tuplize one note do nothing.
+        store.tuplize(vec![Rc::new(note0.clone())]);
+        assert_eq!(store.model().note_repo.len(), 1);
+        assert_eq!(store.model().bar_repo.len(), 1); // bar replenished
+        assert_eq!(store.model().note_repo.get(100u32), &vec![Rc::new(note0.clone())]);
+        
+        store.undo(); // this undo adding note.
+        assert_eq!(store.model().note_repo.len(), 0);
+        assert_eq!(store.model().bar_repo.len(), 0);
+        
+        let note1 = Note::new(
+            110,
+            Pitch::new(Solfa::D, Octave::Oct4, SharpFlat::Null),
+            Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
+            false, false,
+            Velocity::new(64),
+            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO
+        );
+        
+        let note2 = Note::new(
+            120,
+            Pitch::new(Solfa::E, Octave::Oct4, SharpFlat::Null),
+            Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
+            false, false,
+            Velocity::new(64),
+            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO
+        );
+        store.add_note(note0.clone());
+        store.add_note(note1.clone());
+        store.add_note(note2.clone());
+        
+        store.tuplize(vec![Rc::new(note0.clone()), Rc::new(note1.clone()), Rc::new(note2.clone())]);
+        
+        assert_eq!(store.model().note_repo.len(), 3);
+        assert_eq!(store.model().bar_repo.len(), 1);
+        
+        store.undo();
+        assert_eq!(store.model().note_repo.len(), 3);
+        assert_eq!(store.model().bar_repo.len(), 1);
+        assert_eq!(store.model().note_repo.get(100u32)[0].pitch().solfa(), Solfa::C);
+        assert_eq!(store.model().note_repo.get(110u32)[0].pitch().solfa(), Solfa::D);
+        assert_eq!(store.model().note_repo.get(120u32)[0].pitch().solfa(), Solfa::E);
+        
+        store.redo();
+        assert_eq!(store.model().note_repo.len(), 3);
+        assert_eq!(store.model().bar_repo.len(), 1);
+        
+        assert_eq!(store.model().note_repo.get(100u32)[0].pitch().solfa(), Solfa::C);
+        assert_eq!(store.model().note_repo.get(180u32)[0].pitch().solfa(), Solfa::D);
+        assert_eq!(store.model().note_repo.get(260u32)[0].pitch().solfa(), Solfa::E);
+        
     }
 }

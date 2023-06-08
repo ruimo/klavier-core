@@ -133,8 +133,8 @@ impl RateTrimmer {
 
     pub fn from_array(values: [PercentU16; 4]) -> Self {
         Self {
-            sum: PercentU16::from(values[0].to_f32() + values[1].to_f32() + values[2].to_f32() + values[3].to_f32()),
             values,
+            sum: PercentU16::from(values[0].to_f32() * values[1].to_f32() * values[2].to_f32() * values[3].to_f32()),
         }
     }
 
@@ -174,6 +174,7 @@ impl PartialEq for RateTrimmer {
 
 #[cfg(test)]
 mod tests {
+    use crate::percent::PercentU16;
     use crate::trimmer::Trimmer;
 
     #[test]
@@ -257,5 +258,8 @@ mod tests {
         let v = RateTrimmer::new(0.5, 1.0, 1.5, 2.0);
         assert_eq!(v.sum().to_f32(), 1.5);
         assert_eq!(v.apply(100), 150);
+
+        let v = RateTrimmer::from_array([PercentU16::HUNDRED, PercentU16::HUNDRED, PercentU16::HUNDRED, PercentU16::HUNDRED]);
+        assert_eq!(v.sum(), PercentU16::HUNDRED);
     }
 }

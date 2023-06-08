@@ -202,19 +202,19 @@ mod tests {
 
         [
           Models {
-            notes: vec![note0], bars: vec![], tempos: vec![], dumpers: vec![], softs: vec![],
+            notes: vec![(*note0).clone()], bars: vec![], tempos: vec![], dumpers: vec![], softs: vec![],
           },
           Models {
             notes: vec![], bars: vec![bar0], tempos: vec![], dumpers: vec![], softs: vec![],
           },
           Models {
-            notes: vec![note1], bars: vec![bar1, bar2], tempos: vec![], dumpers: vec![], softs: vec![],
+            notes: vec![(*note1).clone()], bars: vec![bar1, bar2], tempos: vec![], dumpers: vec![], softs: vec![],
           },
           Models {
-            notes: vec![note2], bars: vec![bar3], tempos: vec![], dumpers: vec![], softs: vec![],
+            notes: vec![(*note2).clone()], bars: vec![bar3], tempos: vec![], dumpers: vec![], softs: vec![],
           },
           Models {
-            notes: vec![note3], bars: vec![bar4], tempos: vec![], dumpers: vec![], softs: vec![],
+            notes: vec![(*note3).clone()], bars: vec![bar4], tempos: vec![], dumpers: vec![], softs: vec![],
           },
         ]
     }
