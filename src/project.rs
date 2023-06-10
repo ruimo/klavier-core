@@ -1,8 +1,7 @@
-use std::collections::BTreeMap;
 use std::rc::Rc;
 
 use klavier_helper::bag_store::{BagStore, BagStoreEvent};
-use klavier_helper::{bulk_remove, changes};
+use klavier_helper::{changes};
 use klavier_helper::store::{Store, StoreEvent};
 use serde::{Serialize, Deserialize};
 use serdo::undo_store::{SqliteUndoStore, UndoStore};
@@ -103,17 +102,29 @@ impl Project {
         self.rhythm
     }
     
+    pub fn set_rhythm(&mut self, rhythm: Rhythm) {
+        self.rhythm = rhythm;
+    }
+
     pub fn key(&self) -> Key {
         self.key
     }
-    
+
+    pub fn set_key(&mut self, key: Key) {
+        self.key = key;
+    }
+
     pub fn grid(&self) -> Grid {
         self.grid
     }
+
+    pub fn set_grid(&mut self, grid: Grid) {
+        self.grid = grid;
+    }
     
-    pub fn add_note(&mut self, note: Note) {
+    pub fn add_note(&mut self, note: Note, select: bool) {
         let note = Rc::new(note);
-        self.note_repo.add(note.start_tick(), note.clone());
+        self.note_repo.add(note.start_tick(), note.clone(), if select { Some(true) } else { None });
         let replenishid_bars = self.replenish_bars();
         self.undo_store.add(
             Undo::Added {
@@ -121,11 +132,13 @@ impl Project {
                 removed: Models::empty(),
             }
         );
-        //        note
     }
     
-    pub fn add_bar(&mut self, bar: Bar) {
-        let origin = self.bar_repo.add(bar.start_tick, bar).map(|o| vec![o]).unwrap_or(vec![]);
+    pub fn add_bar(&mut self, bar: Bar, select: bool) {
+        let origin = self.bar_repo.add(
+            bar.start_tick, bar,
+            if select { Some(true) } else { None }
+        ).map(|o| vec![o]).unwrap_or(vec![]);
         self.undo_store.add(
             Undo::Added {
                 added: Models::empty().with_bars(vec![bar]),
@@ -134,8 +147,11 @@ impl Project {
         );
     }
     
-    pub fn add_tempo(&mut self, tempo: Tempo) {
-        let origin = self.tempo_repo.add(tempo.start_tick, tempo).map(|o| vec![o]).unwrap_or(vec![]);
+    pub fn add_tempo(&mut self, tempo: Tempo, select: bool) {
+        let origin = self.tempo_repo.add(
+            tempo.start_tick, tempo,
+            if select { Some(true) } else { None }
+        ).map(|o| vec![o]).unwrap_or(vec![]);
         let replenishid_bars = self.replenish_bars();
         self.undo_store.add(
             Undo::Added {
@@ -151,8 +167,11 @@ impl Project {
         );
     }
     
-    pub fn add_dumper(&mut self, ctrl_chg: CtrlChg) {
-        let origin = self.dumper_repo.add(ctrl_chg.start_tick, ctrl_chg).map(|o| vec![o]).unwrap_or(vec![]);
+    pub fn add_dumper(&mut self, ctrl_chg: CtrlChg, select: bool) {
+        let origin = self.dumper_repo.add(
+            ctrl_chg.start_tick, ctrl_chg,
+            if select { Some(true) } else { None }
+        ).map(|o| vec![o]).unwrap_or(vec![]);
         let replenishid_bars = self.replenish_bars();
         self.undo_store.add(
             Undo::Added {
@@ -168,8 +187,11 @@ impl Project {
         );
     }
     
-    pub fn add_soft(&mut self, ctrl_chg: CtrlChg) {
-        let origin = self.soft_repo.add(ctrl_chg.start_tick, ctrl_chg).map(|o| vec![o]).unwrap_or(vec![]);
+    pub fn add_soft(&mut self, ctrl_chg: CtrlChg, select: bool) {
+        let origin = self.soft_repo.add(
+            ctrl_chg.start_tick, ctrl_chg,
+            if select { Some(true) } else { None }
+        ).map(|o| vec![o]).unwrap_or(vec![]);
         let replenishid_bars = self.replenish_bars();
         self.undo_store.add(
             Undo::Added {
@@ -187,12 +209,12 @@ impl Project {
     
     pub fn tuplize(&mut self, notes: Vec<Rc<Note>>) {
         if 1 < notes.len() {
-            let mut to_remove = BTreeMap::new();
+            let mut to_remove = Vec::with_capacity(notes.len());
             for n in notes.iter() {
-                to_remove.insert(n.start_tick(), vec![n.clone()]);
+                to_remove.push((n.start_tick(), n.clone()));
             }
             let tupled = tuple::tuplize(notes.clone());
-            self.note_repo.remove_all(to_remove);
+            self.note_repo.bulk_remove(&to_remove, None);
             self.note_repo.bulk_add(
                 tupled.iter().map(|n| (n.start_tick(), n.clone())).collect(),
                 Some(true)
@@ -216,54 +238,25 @@ impl Project {
     
     pub fn bulk_remove(
         &mut self,
-        note_remove: Option<impl bulk_remove::BulkRemove<u32, Rc<Note>> + 'static>,
-        bar_remove: Option<impl bulk_remove::BulkRemove<u32, Bar> + 'static>,
-        tempo_remove: Option<impl bulk_remove::BulkRemove<u32, Tempo> + 'static>,
-        dumper_remove: Option<impl bulk_remove::BulkRemove<u32, CtrlChg> + 'static>,
-        soft_remove: Option<impl bulk_remove::BulkRemove<u32, CtrlChg> + 'static>
+        note_remove: Vec<Rc<Note>>, bar_remove: Vec<Bar>, tempo_remove: Vec<Tempo>, dumper_remove: Vec<CtrlChg>, soft_remove: Vec<CtrlChg>,
+        need_select: bool
     ) {
-        let mut undo_remove = Models {
-            notes: vec![],
-            bars: vec![],
-            tempos: vec![],
-            dumpers: vec![],
-            softs: vec![],
+        let metadata = if need_select { Some(true) } else { None };
+        
+        self.note_repo.bulk_remove(&note_remove.iter().map(|n| (n.start_tick(), n.clone())).collect::<Vec<(u32, Rc<Note>)>>(), metadata);
+        self.bar_repo.bulk_remove(&bar_remove.iter().map(|b| (b.start_tick, *b)).collect::<Vec<(u32, Bar)>>(), metadata);
+        self.tempo_repo.bulk_remove(&tempo_remove.iter().map(|t| (t.start_tick, *t)).collect::<Vec<(u32, Tempo)>>(), metadata);
+        self.dumper_repo.bulk_remove(&dumper_remove.iter().map(|d| (d.start_tick, *d)).collect::<Vec<(u32, CtrlChg)>>(), metadata);
+        self.soft_repo.bulk_remove(&soft_remove.iter().map(|d| (d.start_tick, *d)).collect::<Vec<(u32, CtrlChg)>>(), metadata);
+
+        let undo_remove = Models {
+            notes: Models::unwrap_rc(&note_remove),
+            bars: bar_remove,
+            tempos: tempo_remove,
+            dumpers: dumper_remove,
+            softs: soft_remove,
         };
-        
-        if let Some(nr) = note_remove {
-            for (_k, note) in nr.iter() {
-                undo_remove.notes.push((*note).clone());
-            }
-            self.note_repo.bulk_remove(nr);
-        }
-        if let Some(br) = bar_remove {
-            for (_k, v) in br.iter() {
-                undo_remove.bars.push(v);
-            }
-            self.bar_repo.bulk_remove(br);
-        }
-        if let Some(tr) = tempo_remove {
-            for (_k, v) in tr.iter() {
-                undo_remove.tempos.push(v);
-            }
-            self.tempo_repo.bulk_remove(tr);
-        }
-        if let Some(dr) = dumper_remove {
-            for (_k, v) in dr.iter() {
-                undo_remove.dumpers.push(v);
-            }
-            self.dumper_repo.bulk_remove(dr);
-        }
-        if let Some(sr) = soft_remove {
-            for (_k, v) in sr.iter() {
-                undo_remove.softs.push(v);
-            }
-            self.soft_repo.bulk_remove(sr);
-        }
-        
-        self.undo_store.add(
-            Undo::Removed(undo_remove)
-        );
+        self.undo_store.add(Undo::Removed(undo_remove));
     }
     
     pub fn copy_with(
@@ -424,74 +417,74 @@ impl Project {
                     }
                     
                     for n in removed.notes.iter() {
-                        self.note_repo.add(n.start_tick(), Rc::new(n.clone()));
+                        self.note_repo.add(n.start_tick(), Rc::new(n.clone()), None);
                     }
                     for b in removed.bars.iter() {
-                        self.bar_repo.add(b.start_tick, *b);
+                        self.bar_repo.add(b.start_tick, *b, None);
                     }
                     for t in removed.tempos.iter() {
-                        self.tempo_repo.add(t.start_tick, *t);
+                        self.tempo_repo.add(t.start_tick, *t, None);
                     }
                     for d in removed.dumpers.iter() {
-                        self.dumper_repo.add(d.start_tick, *d);
+                        self.dumper_repo.add(d.start_tick, *d, None);
                     }
                     for s in removed.softs.iter() {
-                        self.soft_repo.add(s.start_tick, *s);
+                        self.soft_repo.add(s.start_tick, *s, None);
                     }
                 },
                 Undo::Changed { changed, removed } => {
                     for (from, to) in changed.notes.iter() {
                         self.note_repo.remove(&to.start_tick(), to);
-                        self.note_repo.add(from.start_tick(), from.clone());
+                        self.note_repo.add(from.start_tick(), from.clone(), None);
                     }
                     for (from, to) in changed.bars.iter() {
                         self.bar_repo.remove(&to.start_tick);
-                        self.bar_repo.add(from.start_tick, from.clone());
+                        self.bar_repo.add(from.start_tick, from.clone(), None);
                     }
                     for (from, to) in changed.tempos.iter() {
                         self.tempo_repo.remove(&to.start_tick);
-                        self.tempo_repo.add(from.start_tick, from.clone());
+                        self.tempo_repo.add(from.start_tick, from.clone(), None);
                     }
                     for (from, to) in changed.dumpers.iter() {
                         self.dumper_repo.remove(&to.start_tick);
-                        self.dumper_repo.add(from.start_tick, from.clone());
+                        self.dumper_repo.add(from.start_tick, from.clone(), None);
                     }
                     for (from, to) in changed.softs.iter() {
                         self.soft_repo.remove(&to.start_tick);
-                        self.soft_repo.add(from.start_tick, from.clone());
+                        self.soft_repo.add(from.start_tick, from.clone(), None);
                     }
                     
                     for n in removed.notes.iter() {
-                        self.note_repo.add(n.start_tick(), Rc::new(n.clone()));
+                        self.note_repo.add(n.start_tick(), Rc::new(n.clone()), None);
                     }
                     for b in removed.bars.iter() {
-                        self.bar_repo.add(b.start_tick, *b);
+                        self.bar_repo.add(b.start_tick, *b, None);
                     }
                     for t in removed.tempos.iter() {
-                        self.tempo_repo.add(t.start_tick, *t);
+                        self.tempo_repo.add(t.start_tick, *t, None);
                     }
                     for d in removed.dumpers.iter() {
-                        self.dumper_repo.add(d.start_tick, *d);
+                        self.dumper_repo.add(d.start_tick, *d, None);
                     }
                     for s in removed.softs.iter() {
-                        self.soft_repo.add(s.start_tick, *s);
+                        self.soft_repo.add(s.start_tick, *s, None);
                     }
                 },
                 Undo::Removed(remove) => {
                     for n in remove.notes.iter() {
-                        self.note_repo.add(n.start_tick(), Rc::new(n.clone()));
+                        self.note_repo.add(n.start_tick(), Rc::new(n.clone()), None);
                     }
                     for b in remove.bars.iter() {
-                        self.bar_repo.add(b.start_tick, b.clone());
+                        self.bar_repo.add(b.start_tick, b.clone(), None);
                     }
                     for t in remove.tempos.iter() {
-                        self.tempo_repo.add(t.start_tick, t.clone());
+                        self.tempo_repo.add(t.start_tick, t.clone(), None);
                     }
                     for d in remove.dumpers.iter() {
-                        self.dumper_repo.add(d.start_tick, d.clone());
+                        self.dumper_repo.add(d.start_tick, d.clone(), None);
                     }
                     for s in remove.softs.iter() {
-                        self.soft_repo.add(s.start_tick, s.clone());
+                        self.soft_repo.add(s.start_tick, s.clone(), None);
                     }
                 }
             }
@@ -652,7 +645,7 @@ impl Project {
         while bar_tick < max_end_tick {
             bar_tick += bar_tick_len;
             let bar = Bar::new(bar_tick, None, None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null);
-            self.add_bar(bar);
+            self.add_bar(bar, false);
             replenished_bars.push(bar);
         }
         replenished_bars
@@ -718,7 +711,7 @@ enum ProjectCmd {
     SetRhythm(Rhythm, Rhythm),
     SetKey(Key, Key),
     SetGrid(Grid, Grid),
-    AddedRemoved { added: Models, removed: Models },
+    AddedRemoved { added: Models, removed: Models, select: bool },
 }
 
 impl Cmd for ProjectCmd {
@@ -735,7 +728,7 @@ impl Cmd for ProjectCmd {
             ProjectCmd::SetGrid(old_grid, _) => {
                 proj.grid = *old_grid;
             },
-            ProjectCmd::AddedRemoved { added, removed } => {
+            ProjectCmd::AddedRemoved { added, removed, select } => {
                 for n in added.notes.iter() {
                     proj.note_repo.remove(&n.start_tick(), &Rc::new((*n).clone()));
                 }
@@ -753,19 +746,19 @@ impl Cmd for ProjectCmd {
                 }
                 
                 for n in removed.notes.iter() {
-                    proj.note_repo.add(n.start_tick(), Rc::new((*n).clone()));
+                    proj.note_repo.add(n.start_tick(), Rc::new((*n).clone()), Some(*select));
                 }
                 for b in removed.bars.iter() {
-                    proj.bar_repo.add(b.start_tick, *b);
+                    proj.bar_repo.add(b.start_tick, *b, Some(*select));
                 }
                 for t in removed.tempos.iter() {
-                    proj.tempo_repo.add(t.start_tick, *t);
+                    proj.tempo_repo.add(t.start_tick, *t, Some(*select));
                 }
                 for d in removed.dumpers.iter() {
-                    proj.dumper_repo.add(d.start_tick, *d);
+                    proj.dumper_repo.add(d.start_tick, *d, Some(*select));
                 }
                 for s in removed.softs.iter() {
-                    proj.soft_repo.add(s.start_tick, *s);
+                    proj.soft_repo.add(s.start_tick, *s, Some(*select));
                 }
             },
         }
@@ -782,7 +775,7 @@ impl Cmd for ProjectCmd {
             ProjectCmd::SetGrid(_, new_grid) => {
                 proj.grid = *new_grid;
             }
-            ProjectCmd::AddedRemoved { added, removed } => {
+            ProjectCmd::AddedRemoved { added, removed , select } => {
                 for n in removed.notes.iter() {
                     proj.note_repo.remove(&n.start_tick(), &Rc::new(n.clone()));
                 }
@@ -800,19 +793,19 @@ impl Cmd for ProjectCmd {
                 }
                 
                 for n in added.notes.iter() {
-                    proj.note_repo.add(n.start_tick(), Rc::new(n.clone()));
+                    proj.note_repo.add(n.start_tick(), Rc::new(n.clone()), Some(*select));
                 }
                 for b in added.bars.iter() {
-                    proj.bar_repo.add(b.start_tick, *b);
+                    proj.bar_repo.add(b.start_tick, *b, Some(*select));
                 }
                 for t in added.tempos.iter() {
-                    proj.tempo_repo.add(t.start_tick, *t);
+                    proj.tempo_repo.add(t.start_tick, *t, Some(*select));
                 }
                 for d in added.dumpers.iter() {
-                    proj.dumper_repo.add(d.start_tick, *d);
+                    proj.dumper_repo.add(d.start_tick, *d, Some(*select));
                 }
                 for s in added.softs.iter() {
-                    proj.soft_repo.add(s.start_tick, *s);
+                    proj.soft_repo.add(s.start_tick, *s, Some(*select));
                 }
             },
         }
@@ -830,12 +823,17 @@ trait ProjectIntf {
     fn set_rhythm(&mut self, rhythm: Rhythm);
     fn set_key(&mut self, key: Key);
     fn set_grid(&mut self, key: Grid);
-    fn add_note(&mut self, note: Note);
-    fn add_bar(&mut self, bar: Bar);
-    fn add_tempo(&mut self, bar: Tempo);
-    fn add_dumper(&mut self, dumper: CtrlChg);
-    fn add_soft(&mut self, soft: CtrlChg);
+    fn add_note(&mut self, note: Note, select: bool);
+    fn add_bar(&mut self, bar: Bar, select: bool);
+    fn add_tempo(&mut self, bar: Tempo, select: bool);
+    fn add_dumper(&mut self, dumper: CtrlChg, select: bool);
+    fn add_soft(&mut self, soft: CtrlChg, select: bool);
     fn tuplize(&mut self, notes: Vec<Rc<Note>>);
+    fn bulk_remove(
+        &mut self,
+        note_remove: Vec<Rc<Note>>, bar_remove: Vec<Bar>, tempo_remove: Vec<Tempo>, dumper_remove: Vec<CtrlChg>, soft_remove: Vec<CtrlChg>,
+        need_select: bool
+    );
 }
 
 impl ProjectIntf for SqliteUndoStore::<ProjectCmd, Project, ProjectCmdErr> {
@@ -851,69 +849,74 @@ impl ProjectIntf for SqliteUndoStore::<ProjectCmd, Project, ProjectCmdErr> {
         self.add_cmd(ProjectCmd::SetGrid(self.model().grid, grid));
     }
     
-    fn add_note(&mut self, note: Note) {
+    fn add_note(&mut self, note: Note, select: bool) {
         let note = Rc::new(note);
         
         let _ = self.mutate(&mut |proj| {
-            proj.note_repo.add(note.start_tick(), note.clone());
+            proj.note_repo.add(note.start_tick(), note.clone(), Some(select));
             let replenishid_bars = proj.replenish_bars();
             Ok(
                 ProjectCmd::AddedRemoved {
                     added: Models::empty().with_notes(&[note.clone()]).with_bars(replenishid_bars),
                     removed: Models::empty(),
+                    select,
                 }
             )
         });
     }
     
-    fn add_bar(&mut self, bar: Bar) {
+    fn add_bar(&mut self, bar: Bar, select: bool) {
         let _ = self.mutate(&mut | proj| {
-            let origin = proj.bar_repo.add(bar.start_tick, bar).map(|o| vec![o]).unwrap_or(vec![]);
+            let origin = proj.bar_repo.add(bar.start_tick, bar, Some(select)).map(|o| vec![o]).unwrap_or(vec![]);
             
             Ok(
                 ProjectCmd::AddedRemoved {
                     added: Models::empty().with_bars(vec![bar]),
                     removed: Models::empty().with_bars(origin),
+                    select,
                 }
             )
         });
     }
     
-    fn add_tempo(&mut self, tempo: Tempo) {
+    fn add_tempo(&mut self, tempo: Tempo, select: bool) {
         let _ = self.mutate(&mut |proj| {
-            let origin = proj.tempo_repo.add(tempo.start_tick, tempo).map(|o| vec![o]).unwrap_or(vec![]);
+            let origin = proj.tempo_repo.add(tempo.start_tick, tempo, Some(select)).map(|o| vec![o]).unwrap_or(vec![]);
             let replenishid_bars = proj.replenish_bars();
             Ok(
                 ProjectCmd::AddedRemoved {
                     added: Models::empty().with_bars(replenishid_bars).with_tempos(vec![tempo]),
                     removed: Models::empty().with_tempos(origin),
+                    select,
                 }
                 
             )
         });
     }
     
-    fn add_dumper(&mut self, dumper: CtrlChg) {
+    fn add_dumper(&mut self, dumper: CtrlChg, select: bool) {
         let _ = self.mutate(&mut |proj| {
-            let origin = proj.dumper_repo.add(dumper.start_tick, dumper).map(|o| vec![o]).unwrap_or(vec![]);
+            let origin = proj.dumper_repo.add(dumper.start_tick, dumper, Some(select)).map(|o| vec![o]).unwrap_or(vec![]);
             let replenishid_bars = proj.replenish_bars();
             Ok(
                 ProjectCmd::AddedRemoved {
                     added: Models::empty().with_bars(replenishid_bars).with_dumpers(vec![dumper]),
                     removed: Models::empty().with_dumpers(origin),
+                    select,
                 }
             )
         });
     }
     
-    fn add_soft(&mut self, soft: CtrlChg) {
+    fn add_soft(&mut self, soft: CtrlChg, select: bool) {
         let _ = self.mutate(&mut |proj| {
-            let origin = proj.soft_repo.add(soft.start_tick, soft).map(|o| vec![o]).unwrap_or(vec![]);
+            let origin = proj.soft_repo.add(soft.start_tick, soft, Some(select)).map(|o| vec![o]).unwrap_or(vec![]);
             let replenishid_bars = proj.replenish_bars();
             Ok(
                 ProjectCmd::AddedRemoved {
                     added: Models::empty().with_bars(replenishid_bars).with_softs(vec![soft]),
                     removed: Models::empty().with_softs(origin),
+                    select
                 }
             )
         });
@@ -922,12 +925,12 @@ impl ProjectIntf for SqliteUndoStore::<ProjectCmd, Project, ProjectCmdErr> {
     fn tuplize(&mut self, notes: Vec<Rc<Note>>) {
         let _ = self.mutate(&mut |proj| {
             if 1 < notes.len() {
-                let mut to_remove = BTreeMap::new();
+                let mut to_remove = Vec::with_capacity(notes.len());
                 for n in notes.iter() {
-                    to_remove.insert(n.start_tick(), vec![n.clone()]);
+                    to_remove.push((n.start_tick(), n.clone()));
                 }
                 let tupled = tuple::tuplize(notes.clone());
-                proj.note_repo.remove_all(to_remove);
+                proj.note_repo.remove_all(&to_remove);
                 proj.note_repo.bulk_add(
                     tupled.iter().map(|n| (n.start_tick(), n.clone())).collect(),
                     Some(true)
@@ -938,6 +941,7 @@ impl ProjectIntf for SqliteUndoStore::<ProjectCmd, Project, ProjectCmdErr> {
                     ProjectCmd::AddedRemoved {
                         added: Models::empty().with_notes(&tupled).with_bars(replenishid_bars),
                         removed: Models::empty().with_notes(&notes),
+                        select: true,
                     }
                 )
             } else {
@@ -945,6 +949,24 @@ impl ProjectIntf for SqliteUndoStore::<ProjectCmd, Project, ProjectCmdErr> {
             }
         });
         
+    }
+
+    fn bulk_remove(
+        &mut self,
+        note_remove: Vec<Rc<Note>>, bar_remove: Vec<Bar>, tempo_remove: Vec<Tempo>, dumper_remove: Vec<CtrlChg>, soft_remove: Vec<CtrlChg>,
+        need_select: bool
+    ) {
+        let removed = Models {
+            notes: Models::unwrap_rc(&note_remove),
+            bars: bar_remove,
+            tempos: tempo_remove,
+            dumpers: dumper_remove,
+            softs: soft_remove,
+        };
+
+        self.add_cmd(
+            ProjectCmd::AddedRemoved { added: Models::empty(), removed, select: need_select }
+        );
     }
 }
 
@@ -964,12 +986,12 @@ mod tests {
         let mut store: Store<u32, Tempo, Option<bool>> = Store::new(false);
         assert_eq!(tempo_at(0, &store), DEFAULT_TEMPO);
         
-        store.add(10, Tempo { start_tick: 10, value: TempoValue::new(100) });
+        store.add(10, Tempo { start_tick: 10, value: TempoValue::new(100) }, None);
         assert_eq!(tempo_at(0, &store), DEFAULT_TEMPO);
         assert_eq!(tempo_at(10, &store), TempoValue::new(100));
         assert_eq!(tempo_at(11, &store), TempoValue::new(100));
         
-        store.add(20, Tempo { start_tick: 20, value: TempoValue::new(200) });
+        store.add(20, Tempo { start_tick: 20, value: TempoValue::new(200) }, None);
         assert_eq!(tempo_at(0, &store), DEFAULT_TEMPO);
         assert_eq!(tempo_at(10, &store), TempoValue::new(100));
         assert_eq!(tempo_at(11, &store), TempoValue::new(100));
@@ -993,7 +1015,7 @@ mod tests {
             Trimmer::ZERO
         );
         
-        let _ = proj.add_note(note);
+        let _ = proj.add_note(note, false);
         assert_eq!(proj.note_repo().len(), 1);
         
         proj.undo();
@@ -1011,7 +1033,7 @@ mod tests {
             EndOrRegion::Null,
             RepeatStart::Null
         );
-        proj.add_bar(bar);
+        proj.add_bar(bar, false);
         assert_eq!(proj.bar_repo().len(), 1);
         proj.undo();
         assert_eq!(proj.bar_repo().len(), 0);
@@ -1034,7 +1056,7 @@ mod tests {
             EndOrRegion::Null,
             RepeatStart::Null
         );
-        proj.add_bar(bar);
+        proj.add_bar(bar, false);
         
         assert_eq!(proj.location_to_tick(Location::new(0, 0)), Ok(0));
         assert_eq!(proj.location_to_tick(Location::new(0, 1)), Ok(1));
@@ -1051,7 +1073,7 @@ mod tests {
             EndOrRegion::Null,
             RepeatStart::Null
         );
-        proj.add_bar(bar);
+        proj.add_bar(bar, false);
         
         assert_eq!(proj.location_to_tick(Location::new(0, 0)), Ok(0));
         assert_eq!(proj.location_to_tick(Location::new(0, 1)), Ok(1));
@@ -1074,7 +1096,7 @@ mod tests {
             EndOrRegion::Null,
             RepeatStart::Null
         );
-        proj.add_bar(bar);
+        proj.add_bar(bar, false);
         
         assert_eq!(proj.tick_to_location(0), Location::new(0, 0));
         assert_eq!(proj.tick_to_location(99), Location::new(0, 99));
@@ -1089,7 +1111,7 @@ mod tests {
             EndOrRegion::Null,
             RepeatStart::Null
         );
-        proj.add_bar(bar);
+        proj.add_bar(bar, false);
         
         assert_eq!(proj.tick_to_location(0), Location::new(0, 0));
         assert_eq!(proj.tick_to_location(99), Location::new(0, 99));
@@ -1111,7 +1133,7 @@ mod tests {
             100, None,
             None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null
         );
-        proj.add_bar(bar0);
+        proj.add_bar(bar0, false);
         assert_eq!(proj.last_bar(), Some(bar0));
         
         assert_eq!(proj.rhythm_at(0), Rhythm::new(6, 8));
@@ -1123,21 +1145,21 @@ mod tests {
             200, Some(Rhythm::new(3, 4)),
             None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null
         );
-        proj.add_bar(bar1);
+        proj.add_bar(bar1, false);
         assert_eq!(proj.last_bar(), Some(bar1));
         
         let bar2 = Bar::new(
             300, None,
             None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null
         );
-        proj.add_bar(bar2);
+        proj.add_bar(bar2, false);
         assert_eq!(proj.last_bar(), Some(bar2));
         
         let bar3 = Bar::new(
             400, Some(Rhythm::new(4, 4)),
             None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null
         );
-        proj.add_bar(bar3);
+        proj.add_bar(bar3, false);
         assert_eq!(proj.last_bar(), Some(bar3));
         
         assert_eq!(proj.rhythm_at(0), Rhythm::new(6, 8));
@@ -1170,7 +1192,7 @@ mod tests {
         );
         
         let end_tick0 = note0.base_start_tick() + note0.tick_len();
-        proj.add_note(note0);
+        proj.add_note(note0, false);
         assert_eq!(proj.note_max_end_tick(), Some(end_tick0));
         
         let note1 = Note::new( // end tick: 100 + 960 * 1.5 = 1540
@@ -1181,7 +1203,7 @@ mod tests {
             Trimmer::ZERO
         );
         
-        proj.add_note(note1.clone());
+        proj.add_note(note1.clone(), false);
         assert_eq!(proj.note_max_end_tick(), Some(note1.base_start_tick() + note1.tick_len()));
         
         let _ = proj.add_note(
@@ -1191,7 +1213,7 @@ mod tests {
                 false, false, Velocity::new(10), Trimmer::ZERO,
                 RateTrimmer::new(1.0, 1.0, 1.0, 2.0),
                 Trimmer::ZERO
-            )
+            ), false
         );
         
         assert_eq!(proj.note_max_end_tick(), Some(note1.base_start_tick() + note1.tick_len()));
@@ -1210,7 +1232,7 @@ mod tests {
                 false, false, Velocity::new(10), Trimmer::ZERO,
                 RateTrimmer::new(1.0, 1.0, 1.0, 1.0),
                 Trimmer::ZERO
-            )
+            ), false
         );
         assert_eq!(proj.bar_repo().len(), 1);
         proj.replenish_bars();
@@ -1224,7 +1246,7 @@ mod tests {
                 false, false, Velocity::new(10), Trimmer::ZERO,
                 RateTrimmer::new(1.0, 1.0, 1.0, 1.0),
                 Trimmer::ZERO
-            )
+            ), false
         );
         proj.replenish_bars();
         assert_eq!(proj.bar_repo().len(), 1);
@@ -1237,38 +1259,38 @@ mod tests {
                 false, false, Velocity::new(10), Trimmer::ZERO,
                 RateTrimmer::new(1.0, 1.0, 1.0, 1.0),
                 Trimmer::ZERO
-            )
+            ), false
         );
         proj.replenish_bars();
         assert_eq!(proj.bar_repo().len(), 3);
         assert_eq!(proj.bar_repo().peek_last().unwrap().0, 960 * 3);
         
-        let _ = proj.add_tempo(Tempo::new(960*3, 200));
+        let _ = proj.add_tempo(Tempo::new(960*3, 200), false);
         proj.replenish_bars();
         assert_eq!(proj.bar_repo().len(), 3);
         assert_eq!(proj.bar_repo().peek_last().unwrap().0, 960 * 3);
         
-        let _ = proj.add_tempo(Tempo::new(960 * 3 + 1, 200));
+        let _ = proj.add_tempo(Tempo::new(960 * 3 + 1, 200), false);
         proj.replenish_bars();
         assert_eq!(proj.bar_repo().len(), 4);
         assert_eq!(proj.bar_repo().peek_last().unwrap().0, 960 * 4);
         
-        let _ = proj.add_dumper(CtrlChg::new(960 * 4, Velocity::new(20)));
+        let _ = proj.add_dumper(CtrlChg::new(960 * 4, Velocity::new(20)), false);
         proj.replenish_bars();
         assert_eq!(proj.bar_repo().len(), 4);
         assert_eq!(proj.bar_repo().peek_last().unwrap().0, 960 * 4);
         
-        let _ = proj.add_dumper(CtrlChg::new(960 * 4 + 1, Velocity::new(20)));
+        let _ = proj.add_dumper(CtrlChg::new(960 * 4 + 1, Velocity::new(20)), false);
         proj.replenish_bars();
         assert_eq!(proj.bar_repo().len(), 5);
         assert_eq!(proj.bar_repo().peek_last().unwrap().0, 960 * 5);
         
-        let _ = proj.add_soft(CtrlChg::new(960 * 5, Velocity::new(20)));
+        let _ = proj.add_soft(CtrlChg::new(960 * 5, Velocity::new(20)), false);
         proj.replenish_bars();
         assert_eq!(proj.bar_repo().len(), 5);
         assert_eq!(proj.bar_repo().peek_last().unwrap().0, 960 * 5);
         
-        let _ = proj.add_dumper(CtrlChg::new(960 * 5 + 1, Velocity::new(20)));
+        let _ = proj.add_dumper(CtrlChg::new(960 * 5 + 1, Velocity::new(20)), false);
         proj.replenish_bars();
         assert_eq!(proj.bar_repo().len(), 6);
         assert_eq!(proj.bar_repo().peek_last().unwrap().0, 960 * 6);
@@ -1285,7 +1307,7 @@ mod tests {
             Velocity::new(64),
             Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO
         );
-        proj.add_note(note0.clone());
+        proj.add_note(note0.clone(), false);
         
         let note1 = Note::new(
             120,
@@ -1295,7 +1317,7 @@ mod tests {
             Velocity::new(64),
             Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO
         );
-        proj.add_note(note1.clone());
+        proj.add_note(note1.clone(), false);
         
         let note2 = Note::new(
             150,
@@ -1305,7 +1327,7 @@ mod tests {
             Velocity::new(64),
             Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO
         );
-        proj.add_note(note2.clone());
+        proj.add_note(note2.clone(), false);
         assert_eq!(proj.note_repo().len(), 3);
         
         proj.tuplize(vec![Rc::new(note0), Rc::new(note1), Rc::new(note2)]);
@@ -1436,7 +1458,7 @@ mod tests {
             Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO
         );
         
-        store.add_note(note0.clone());
+        store.add_note(note0.clone(), false);
         
         assert_eq!(store.model().note_repo.len(), 1);
         assert_eq!(store.model().bar_repo.len(), 1); // bar is replenished.
@@ -1462,7 +1484,7 @@ mod tests {
             None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null
         );
         
-        store.add_bar(bar0);
+        store.add_bar(bar0, false);
         assert_eq!(store.model().bar_repo.len(), 1); // with replenished bar
         
         store.undo();
@@ -1481,7 +1503,7 @@ mod tests {
         
         let tempo0 = Tempo::new(200, 200);
         
-        store.add_tempo(tempo0);
+        store.add_tempo(tempo0, false);
         assert_eq!(store.model().tempo_repo.len(), 1);
         assert_eq!(store.model().bar_repo.len(), 1); // bar is replenished.
         
@@ -1502,7 +1524,7 @@ mod tests {
         let mut store = SqliteUndoStore::<ProjectCmd, Project, ProjectCmdErr>::open(dir.clone(), None).unwrap();
         
         let dumper = CtrlChg::new(200, Velocity::new(20));
-        store.add_dumper(dumper);
+        store.add_dumper(dumper, false);
         
         assert_eq!(store.model().dumper_repo.len(), 1);
         assert_eq!(store.model().bar_repo.len(), 1); // bar is replenished.
@@ -1524,7 +1546,7 @@ mod tests {
         let mut store = SqliteUndoStore::<ProjectCmd, Project, ProjectCmdErr>::open(dir.clone(), None).unwrap();
         
         let soft = CtrlChg::new(200, Velocity::new(20));
-        store.add_soft(soft);
+        store.add_soft(soft, false);
         
         assert_eq!(store.model().soft_repo.len(), 1);
         assert_eq!(store.model().bar_repo.len(), 1); // bar is replenished.
@@ -1558,7 +1580,7 @@ mod tests {
             Velocity::new(64),
             Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO
         );
-        store.add_note(note0.clone());
+        store.add_note(note0.clone(), false);
         
         // Tuplize one note do nothing.
         store.tuplize(vec![Rc::new(note0.clone())]);
@@ -1587,9 +1609,9 @@ mod tests {
             Velocity::new(64),
             Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO
         );
-        store.add_note(note0.clone());
-        store.add_note(note1.clone());
-        store.add_note(note2.clone());
+        store.add_note(note0.clone(), false);
+        store.add_note(note1.clone(), false);
+        store.add_note(note2.clone(), false);
         
         store.tuplize(vec![Rc::new(note0.clone()), Rc::new(note1.clone()), Rc::new(note2.clone())]);
         

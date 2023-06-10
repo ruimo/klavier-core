@@ -269,7 +269,7 @@ mod tests {
     fn range_too_left() {
         let mut store: Store<NanFreeF32, Bar, i32> = Store::new(false);
         let bar0 = Bar::new(1, None, None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null);
-        store.add(NanFreeF32::from(1.0), bar0);
+        store.add(NanFreeF32::from(1.0), bar0, 0);
         let (start, mut z) = store.range(NanFreeF32::from(0.0) .. NanFreeF32::from(1.0));
         assert_eq!(start, 0);
         assert_eq!(z.next(), None);
@@ -279,7 +279,7 @@ mod tests {
     fn range_hit() {
         let mut store: Store<NanFreeF32, Bar, i32> = Store::new(false);
         let bar0 = Bar::new(1, None, None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null);
-        store.add(NanFreeF32::from(1.0), bar0);
+        store.add(NanFreeF32::from(1.0), bar0, 0);
         let (start, mut z) = store.range(NanFreeF32::from(0.0) .. NanFreeF32::from(1.1));
         assert_eq!(start, 0);
         assert_eq!(z.next(), Some(&(NanFreeF32::from(1.0), bar0)));
@@ -295,7 +295,7 @@ mod tests {
     fn range_too_right() {
         let mut store: Store<NanFreeF32, Bar, i32> = Store::new(false);
         let bar0 = Bar::new(1, None, None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null);
-        store.add(NanFreeF32::from(1.0), bar0);
+        store.add(NanFreeF32::from(1.0), bar0, 0);
         let (start, mut z) = store.range(NanFreeF32::from(1.1) .. NanFreeF32::from(2.0));
         assert_eq!(start, 0);
         assert_eq!(z.next(), None);
@@ -305,7 +305,7 @@ mod tests {
     fn range_inclusive_end() {
         let mut store: Store<NanFreeF32, Bar, i32> = Store::new(false);
         let bar0 = Bar::new(1, None, None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null);
-        store.add(NanFreeF32::from(1.0), bar0);
+        store.add(NanFreeF32::from(1.0), bar0, 0);
         let (start, mut z) = store.range(NanFreeF32::from(0.1) ..= NanFreeF32::from(1.0));
         assert_eq!(start, 0);
         assert_eq!(z.next(), Some(&(NanFreeF32::from(1.0), bar0)));
@@ -317,9 +317,9 @@ mod tests {
         let bar0 = Bar::new(2, None, None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null);
         let bar1 = Bar::new(10, None, None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null);
         let bar2 = Bar::new(0, None, None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null);
-        store.add(2.0.into(), bar0);
-        store.add(10.0.into(), bar1);
-        store.add(0.0.into(), bar2);
+        store.add(2.0.into(), bar0, 0);
+        store.add(10.0.into(), bar1, 0);
+        store.add(0.0.into(), bar2, 0);
 
         let (start, mut z) = store.range(NanFreeF32::from(0.0) ..= NanFreeF32::from(10.0));
         assert_eq!(start, 0);
@@ -335,9 +335,9 @@ mod tests {
         let bar0 = Bar::new(2, None, None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null);
         let bar1 = Bar::new(10, None, None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null);
         let bar2 = Bar::new(0, None, None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null);
-        store.add(2.0.into(), bar0);
-        store.add(10.0.into(), bar1);
-        store.add(0.0.into(), bar2);
+        store.add(2.0.into(), bar0, 0);
+        store.add(10.0.into(), bar1, 0);
+        store.add(0.0.into(), bar2, 0);
 
         assert_eq!(store.index(2.0.into()), Ok(1));
         assert_eq!(store.index(0.0.into()), Ok(0));
@@ -353,10 +353,10 @@ mod tests {
         let bar1 = Bar::new(10, None, None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null);
         let bar2 = Bar::new(0, None, None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null);
         let bar3 = Bar::new(100, None, None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null);
-        store.add(2.0.into(), bar0);
-        store.add(10.0.into(), bar1);
-        store.add(0.0.into(), bar2);
-        store.add(100.0.into(), bar3);
+        store.add(2.0.into(), bar0, 0);
+        store.add(10.0.into(), bar1, 0);
+        store.add(0.0.into(), bar2, 0);
+        store.add(100.0.into(), bar3, 0);
 
         let (start, mut z) = store.range(NanFreeF32::from(1.0) .. NanFreeF32::from(20.0));
         assert_eq!(start, 1);
@@ -381,14 +381,15 @@ mod tests {
     fn observe() {
         let mut store: Store<NanFreeF32, Bar, i32> = Store::new(true);
         let bar0 = Bar::new(0, None, None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null);
-        store.add(NanFreeF32::from(0.0), bar0);
+        store.add(NanFreeF32::from(0.0), bar0, 999);
 
         let events = store.events();
         assert_eq!(events.len(), 1);
         let e = &events[0];
         match e {
-            StoreEvent::Add(s) => {
+            StoreEvent::Add { added: s, metadata } => {
                 assert_eq!(*s, bar0);
+                assert_eq!(*metadata, 999);
             },
             _ => {
                 panic!("Test failed.");
@@ -403,10 +404,10 @@ mod tests {
         let bar1 = Bar::new(10, None, None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null);
         let bar2 = Bar::new(0, None, None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null);
         let bar3 = Bar::new(100, None, None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null);
-        store.add(2.0.into(), bar0);
-        store.add(10.0.into(), bar1);
-        store.add(0.0.into(), bar2);
-        store.add(100.0.into(), bar3);
+        store.add(2.0.into(), bar0, 0);
+        store.add(10.0.into(), bar1, 0);
+        store.add(0.0.into(), bar2, 0);
+        store.add(100.0.into(), bar3, 0);
         assert_eq!(store.find(&2.0.into()).ok(), Some(1));
         assert_eq!(store.find(&1.0.into()).err(), Some(1));
     }
@@ -417,9 +418,9 @@ mod tests {
         let bar0 = Bar::new(2, None, None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null);
         let bar1 = Bar::new(10, None, None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null);
         let bar2 = Bar::new(0, None, None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null);
-        store.add(2.0.into(), bar0);
-        store.add(10.0.into(), bar1);
-        store.add(0.0.into(), bar2);
+        store.add(2.0.into(), bar0, 0);
+        store.add(10.0.into(), bar1, 0);
+        store.add(0.0.into(), bar2, 0);
 
         let bar3 = Bar::new(0, None, None, DcFine::Dc, EndOrRegion::Null, RepeatStart::Null);
         store.update(1, bar3);
@@ -430,7 +431,7 @@ mod tests {
     fn as_ref() {
         let mut store: Store<NanFreeF32, Bar, i32> = Store::new(false);
         let bar0 = Bar::new(2, None, None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null);
-        store.add(2.0.into(), bar0);
+        store.add(2.0.into(), bar0, 0);
 
         let as_ref = store.as_ref();
         assert_eq!(as_ref.len(), 1);
