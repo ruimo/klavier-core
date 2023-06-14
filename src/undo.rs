@@ -1,23 +1,11 @@
-use std::{collections::{VecDeque, vec_deque::Iter}, rc::Rc};
+use std::{collections::{VecDeque, vec_deque::Iter}};
 
-use crate::{note::Note, bar::Bar, tempo::Tempo, ctrl_chg::CtrlChg, models::Models};
-
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-#[derive(Clone, PartialEq, Debug)]
-pub struct ModelChanges {
-    pub notes: Vec<(Rc<Note>, Rc<Note>)>,
-    pub bars: Vec<(Bar, Bar)>,
-    pub tempos: Vec<(Tempo, Tempo)>,
-    pub dumpers: Vec<(CtrlChg, CtrlChg)>,
-    pub softs: Vec<(CtrlChg, CtrlChg)>,
-}
+use crate::{models::{Models}, project::ModelChangeMetadata};
 
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Clone, PartialEq, Debug)]
 pub enum Undo {
-    Added { added: Models, removed: Models },
-    Changed { changed: ModelChanges, removed: Models },
-    Removed(Models),
+    Changed { added: Models, removed: Models, metadata: ModelChangeMetadata },
 }
 
 #[derive(Debug)]
@@ -103,7 +91,7 @@ impl UndoStore {
 mod tests {
     use std::{rc::Rc};
 
-    use crate::{models::Models, note::Note, pitch::Pitch, solfa::Solfa, octave::Octave, sharp_flat::SharpFlat, duration::{Duration, Numerator, Denominator, Dots}, velocity::Velocity, trimmer::{Trimmer, RateTrimmer}, bar::{Bar, DcFine, EndOrRegion, RepeatStart}, undo::{UndoStore, Undo}};
+    use crate::{models::Models, note::Note, pitch::Pitch, solfa::Solfa, octave::Octave, sharp_flat::SharpFlat, duration::{Duration, Numerator, Denominator, Dots}, velocity::Velocity, trimmer::{Trimmer, RateTrimmer}, bar::{Bar, DcFine, EndOrRegion, RepeatStart}, undo::{UndoStore, Undo}, project::ModelChangeMetadata};
     
     fn test_models() -> [Models; 5] {
         let note0 = Rc::new(
@@ -225,45 +213,46 @@ mod tests {
         let models = test_models();
         assert!(! store.can_undo());
         assert_eq!(store.undo(), None);
-        store.add(Undo::Added { added: models[0].clone(), removed: Models::empty() });
+        let metadata = ModelChangeMetadata::new();
+        store.add(Undo::Changed { added: models[0].clone(), removed: Models::empty(), metadata });
         assert_eq!(store.len(), 1);
         let mut z = store.iter();
-        assert_eq!(z.next(), Some(&Undo::Added { added: models[0].clone(), removed: Models::empty() }));
+        assert_eq!(z.next(), Some(&Undo::Changed { added: models[0].clone(), removed: Models::empty(), metadata }));
         assert_eq!(z.next(), None);
         assert!(store.can_undo());
         
-        store.add(Undo::Added { added: models[1].clone(), removed: Models::empty() });
+        store.add(Undo::Changed { added: models[1].clone(), removed: Models::empty(), metadata });
         assert_eq!(store.len(), 2);
         let mut z = store.iter();
-        assert_eq!(z.next(), Some(&Undo::Added { added: models[1].clone(), removed: Models::empty() }));
-        assert_eq!(z.next(), Some(&Undo::Added { added: models[0].clone(), removed: Models::empty() }));
+        assert_eq!(z.next(), Some(&Undo::Changed { added: models[1].clone(), removed: Models::empty(), metadata }));
+        assert_eq!(z.next(), Some(&Undo::Changed { added: models[0].clone(), removed: Models::empty(), metadata }));
         assert_eq!(z.next(), None);
         assert!(store.can_undo());
         
-        store.add(Undo::Added { added: models[2].clone(), removed: Models::empty() });
+        store.add(Undo::Changed { added: models[2].clone(), removed: Models::empty(), metadata });
         assert_eq!(store.len(), 3);
         let mut z = store.iter();
-        assert_eq!(z.next(), Some(&Undo::Added { added: models[2].clone(), removed: Models::empty() }));
-        assert_eq!(z.next(), Some(&Undo::Added { added: models[1].clone(), removed: Models::empty() } ));
-        assert_eq!(z.next(), Some(&Undo::Added { added: models[0].clone(), removed: Models::empty() }));
+        assert_eq!(z.next(), Some(&Undo::Changed { added: models[2].clone(), removed: Models::empty(), metadata }));
+        assert_eq!(z.next(), Some(&Undo::Changed { added: models[1].clone(), removed: Models::empty(), metadata } ));
+        assert_eq!(z.next(), Some(&Undo::Changed { added: models[0].clone(), removed: Models::empty(), metadata }));
         assert_eq!(z.next(), None);
         assert!(store.can_undo());
         
-        store.add(Undo::Added { added: models[3].clone(), removed: Models::empty() });
+        store.add(Undo::Changed { added: models[3].clone(), removed: Models::empty(), metadata });
         assert_eq!(store.len(), 3);
         let mut z = store.iter();
-        assert_eq!(z.next(), Some(&Undo::Added { added: models[3].clone(), removed: Models::empty() }));
-        assert_eq!(z.next(), Some(&Undo::Added { added: models[2].clone(), removed: Models::empty() }));
-        assert_eq!(z.next(), Some(&Undo::Added { added: models[1].clone(), removed: Models::empty() }));
+        assert_eq!(z.next(), Some(&Undo::Changed { added: models[3].clone(), removed: Models::empty(), metadata }));
+        assert_eq!(z.next(), Some(&Undo::Changed { added: models[2].clone(), removed: Models::empty(), metadata }));
+        assert_eq!(z.next(), Some(&Undo::Changed { added: models[1].clone(), removed: Models::empty(), metadata }));
         assert_eq!(z.next(), None);
         assert!(store.can_undo());
         
-        store.add(Undo::Added { added: models[4].clone(), removed: Models::empty() });
+        store.add(Undo::Changed { added: models[4].clone(), removed: Models::empty(), metadata });
         assert_eq!(store.len(), 3);
         let mut z = store.iter();
-        assert_eq!(z.next(), Some(&Undo::Added { added: models[4].clone(), removed: Models::empty() }));
-        assert_eq!(z.next(), Some(&Undo::Added { added: models[3].clone(), removed: Models::empty() }));
-        assert_eq!(z.next(), Some(&Undo::Added { added: models[2].clone(), removed: Models::empty() }));
+        assert_eq!(z.next(), Some(&Undo::Changed { added: models[4].clone(), removed: Models::empty(), metadata }));
+        assert_eq!(z.next(), Some(&Undo::Changed { added: models[3].clone(), removed: Models::empty(), metadata }));
+        assert_eq!(z.next(), Some(&Undo::Changed { added: models[2].clone(), removed: Models::empty(), metadata }));
         assert_eq!(z.next(), None);
         assert!(store.can_undo());
     }
@@ -272,25 +261,26 @@ mod tests {
     fn can_undo() {
         let mut store = UndoStore::new(3);
         let models = test_models();
+        let metadata = ModelChangeMetadata::new();
         assert!(! store.can_undo());
-        store.add(Undo::Added { added: models[0].clone(), removed: Models::empty() });
-        store.add(Undo::Added { added: models[1].clone(), removed: Models::empty() });
+        store.add(Undo::Changed { added: models[0].clone(), removed: Models::empty(), metadata });
+        store.add(Undo::Changed { added: models[1].clone(), removed: Models::empty(), metadata });
 
         assert!(store.can_undo());
-        assert_eq!(store.undo(), Some(&Undo::Added { added: models[1].clone(), removed: Models::empty() }));
-        assert_eq!(store.undo(), Some(&Undo::Added { added: models[0].clone(), removed: Models::empty() }));
+        assert_eq!(store.undo(), Some(&Undo::Changed { added: models[1].clone(), removed: Models::empty(), metadata }));
+        assert_eq!(store.undo(), Some(&Undo::Changed { added: models[0].clone(), removed: Models::empty(), metadata }));
         assert_eq!(store.undo(), None);
         assert!(! store.can_undo());
 
-        store.add(Undo::Added { added: models[0].clone(), removed: Models::empty() });
-        store.add(Undo::Added { added: models[1].clone(), removed: Models::empty() });
-        store.add(Undo::Added { added: models[2].clone(), removed: Models::empty() });
+        store.add(Undo::Changed { added: models[0].clone(), removed: Models::empty(), metadata });
+        store.add(Undo::Changed { added: models[1].clone(), removed: Models::empty(), metadata });
+        store.add(Undo::Changed { added: models[2].clone(), removed: Models::empty(), metadata });
         assert!(store.can_undo());
-        assert_eq!(store.undo(), Some(&Undo::Added { added: models[2].clone(), removed: Models::empty() }));
-        store.add(Undo::Added { added: models[3].clone(), removed: Models::empty() });
-        assert_eq!(store.undo(), Some(&Undo::Added { added: models[3].clone(), removed: Models::empty() }));
-        assert_eq!(store.undo(), Some(&Undo::Added { added: models[1].clone(), removed: Models::empty() }));
-        assert_eq!(store.undo(), Some(&Undo::Added { added: models[0].clone(), removed: Models::empty() }));
+        assert_eq!(store.undo(), Some(&Undo::Changed { added: models[2].clone(), removed: Models::empty(), metadata }));
+        store.add(Undo::Changed { added: models[3].clone(), removed: Models::empty(), metadata });
+        assert_eq!(store.undo(), Some(&Undo::Changed { added: models[3].clone(), removed: Models::empty(), metadata }));
+        assert_eq!(store.undo(), Some(&Undo::Changed { added: models[1].clone(), removed: Models::empty(), metadata }));
+        assert_eq!(store.undo(), Some(&Undo::Changed { added: models[0].clone(), removed: Models::empty(), metadata }));
         assert_eq!(store.undo(), None);
         assert!(! store.can_undo());
     }
