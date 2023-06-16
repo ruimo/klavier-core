@@ -387,7 +387,7 @@ mod tests {
         assert_eq!(events.len(), 1);
         let e = &events[0];
         match e {
-            StoreEvent::Add { added: s, metadata } => {
+            StoreEvent::Added { added: s, metadata } => {
                 assert_eq!(*s, bar0);
                 assert_eq!(*metadata, 999);
             },

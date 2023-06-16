@@ -66,7 +66,7 @@ impl Models {
 }
 
 pub struct ModelChanges {
-    pub notes: Vec<(Rc<Note>, Rc<Note>)>,
+    pub notes: Vec<(Note, Note)>,
     pub bars: Vec<(Bar, Bar)>,
     pub tempos: Vec<(Tempo, Tempo)>,
     pub dumpers: Vec<(CtrlChg, CtrlChg)>,
@@ -96,7 +96,7 @@ impl ModelChanges {
         }
     }
 
-    pub fn with_notes(mut self, notes: Vec<(Rc<Note>, Rc<Note>)>) -> Self {
+    pub fn with_notes(mut self, notes: Vec<(Note, Note)>) -> Self {
         self.notes = notes;
         self
     }
