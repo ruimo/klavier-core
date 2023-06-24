@@ -27,19 +27,6 @@ pub struct InvalidDot(i32);
 #[derive(serde::Deserialize, serde::Serialize)]
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Note {
-    base_start_tick: u32,
-    pitch: Pitch,
-    duration: Duration,
-    tie: bool,
-    tied: bool,
-    base_velocity: Velocity,
-    start_tick_trimmer: Trimmer,
-    duration_trimmer: RateTrimmer,
-    velocity_trimmer: Trimmer,
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct NoteBuilder {
     pub base_start_tick: u32,
     pub pitch: Pitch,
     pub duration: Duration,
@@ -50,6 +37,19 @@ pub struct NoteBuilder {
     pub duration_trimmer: RateTrimmer,
     pub velocity_trimmer: Trimmer,
 }
+
+// #[derive(Debug, PartialEq, Eq, Clone)]
+// pub struct NoteBuilder {
+    // pub base_start_tick: u32,
+    // pub pitch: Pitch,
+    // pub duration: Duration,
+    // pub tie: bool,
+    // pub tied: bool,
+    // pub base_velocity: Velocity,
+    // pub start_tick_trimmer: Trimmer,
+    // pub duration_trimmer: RateTrimmer,
+    // pub velocity_trimmer: Trimmer,
+// }
 
 impl Note {
     pub fn new(
@@ -76,20 +76,20 @@ impl Note {
         }
     }
     
-    #[inline]
-    pub fn pitch(&self) -> Pitch {
-        self.pitch
-    }
+    // #[inline]
+    // pub fn pitch(&self) -> Pitch {
+        // self.pitch
+    // }
     
-    #[inline]
-    pub fn duration(&self) -> Duration {
-        self.duration
-    }
+    // #[inline]
+    // pub fn duration(&self) -> Duration {
+        // self.duration
+    // }
     
-    #[inline]
-    pub fn base_start_tick(&self) -> u32 {
-        self.base_start_tick
-    }
+    // #[inline]
+    // pub fn base_start_tick(&self) -> u32 {
+        // self.base_start_tick
+    // }
 
     #[inline]
     pub fn start_tick(&self) -> u32 {
@@ -97,35 +97,35 @@ impl Note {
         if tick < 0 { 0 } else { tick as u32 }
     }
 
-    #[inline]
-    pub fn start_tick_trimmer(&self) -> &Trimmer {
-        &self.start_tick_trimmer
-    }
+    // #[inline]
+    // pub fn start_tick_trimmer(&self) -> &Trimmer {
+        // &self.start_tick_trimmer
+    // }
 
-    #[inline]
-    pub fn velocity_trimmer(&self) -> &Trimmer {
-        &self.velocity_trimmer
-    }
+    // #[inline]
+    // pub fn velocity_trimmer(&self) -> &Trimmer {
+        // &self.velocity_trimmer
+    // }
 
-    #[inline]
-    pub fn duration_trimmer(&self) -> &RateTrimmer {
-        &self.duration_trimmer
-    }
+    // #[inline]
+    // pub fn duration_trimmer(&self) -> &RateTrimmer {
+        // &self.duration_trimmer
+    // }
     
     #[inline]
     pub fn tick_len(&self) -> u32 {
         self.duration_trimmer.apply(self.duration.tick_length())
     }
 
-    #[inline]
-    pub fn tie(&self) -> bool {
-        self.tie
-    }
+    // #[inline]
+    // pub fn tie(&self) -> bool {
+        // self.tie
+    // }
 
-    #[inline]
-    pub fn tied(&self) -> bool {
-        self.tied
-    }
+    // #[inline]
+    // pub fn tied(&self) -> bool {
+        // self.tied
+    // }
     
     pub fn up_score_offset(&self) -> Result<Self, PitchError> {
         self.pitch.up().map(|p| {
@@ -155,7 +155,7 @@ impl Note {
     pub fn with_duration_numerator(&self, numerator: Numerator) -> Self {
         Self {
             duration: 
-                if self.duration.numerator() != numerator {
+                if self.duration.numerator != numerator {
                     self.duration.with_numerator(numerator)
                 } else {
                     self.duration
@@ -189,7 +189,7 @@ impl Note {
     }
 
     pub fn add_dots(&self, dots_to_add: i32) -> Result<Self, InvalidDot> {
-        let new_dots = self.duration.dots().value() as i32 + dots_to_add;
+        let new_dots = self.duration.dots.value() as i32 + dots_to_add;
         if new_dots < 0 || (Duration::MAX_DOT as i32) < new_dots {
             Err(InvalidDot(new_dots))
         } else {
@@ -277,35 +277,35 @@ impl Note {
     );
 }
 
-impl NoteBuilder {
-    pub fn new(note: &Note) -> Self {
-        Self {
-            base_start_tick: note.base_start_tick,
-            pitch: note.pitch,
-            duration: note.duration,
-            tie: note.tie,
-            tied: note.tied,
-            base_velocity: note.base_velocity,
-            start_tick_trimmer: note.start_tick_trimmer,
-            duration_trimmer: note.duration_trimmer,
-            velocity_trimmer: note.velocity_trimmer,
-        }
-    }
-
-    pub fn build(&self) -> Note {
-        Note::new(
-            self.base_start_tick,
-            self.pitch,
-            self.duration,
-            self.tie,
-            self.tied,
-            self.base_velocity,
-            self.start_tick_trimmer,
-            self.duration_trimmer,
-            self.velocity_trimmer
-        )
-    }
-}
+// impl NoteBuilder {
+    // pub fn new(note: &Note) -> Self {
+        // Self {
+            // base_start_tick: note.base_start_tick,
+            // pitch: note.pitch,
+            // duration: note.duration,
+            // tie: note.tie,
+            // tied: note.tied,
+            // base_velocity: note.base_velocity,
+            // start_tick_trimmer: note.start_tick_trimmer,
+            // duration_trimmer: note.duration_trimmer,
+            // velocity_trimmer: note.velocity_trimmer,
+        // }
+    // }
+// 
+    // pub fn build(&self) -> Note {
+        // Note::new(
+            // self.base_start_tick,
+            // self.pitch,
+            // self.duration,
+            // self.tie,
+            // self.tied,
+            // self.base_velocity,
+            // self.start_tick_trimmer,
+            // self.duration_trimmer,
+            // self.velocity_trimmer
+        // )
+    // }
+// }
 
 pub const MAX_TICK_LEN: i32 = Duration::TICK_RESOLUTION * 8;
 
@@ -379,7 +379,7 @@ mod tests {
             RateTrimmer::new(1.0, 0.5, 2.0, 1.5), // duration_trimmer
             Trimmer::ZERO, // velocity_trimmer
         );
-        assert_eq!(note.up_score_offset().unwrap().pitch(), Pitch::new(Solfa::B, Octave::Oct1, SharpFlat::Null));
+        assert_eq!(note.up_score_offset().unwrap().pitch, Pitch::new(Solfa::B, Octave::Oct1, SharpFlat::Null));
     }
     
     #[test]

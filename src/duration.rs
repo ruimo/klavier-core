@@ -114,9 +114,9 @@ impl Dots {
 #[derive(serde::Deserialize, serde::Serialize)]
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub struct Duration {
-    numerator: Numerator,
-    denominator: Denominator,
-    dots: Dots,
+    pub numerator: Numerator,
+    pub denominator: Denominator,
+    pub dots: Dots,
 }
 
 impl Duration {
@@ -129,18 +129,6 @@ impl Duration {
 
     pub fn new(numerator: Numerator, denominator: Denominator, dots: Dots) -> Duration {
         Self { numerator, denominator, dots }
-    }
-
-    pub const fn numerator(self: Self) -> Numerator {
-        self.numerator
-    }
-
-    pub const fn denominator(self: Self) -> Denominator {
-        self.denominator
-    }
-
-    pub const fn dots(self: Self) -> Dots {
-        self.dots
     }
 
     pub const fn tick_length(self) -> u32 {
@@ -197,9 +185,9 @@ mod tests {
     #[test]
     fn getter() {
         let d = Duration::new(Numerator::Half, Denominator::from_value(2).unwrap(), Dots::from_value(3).unwrap());
-        assert_eq!(d.numerator(), Numerator::Half);
-        assert_eq!(d.denominator().value(), 2);
-        assert_eq!(d.dots().value(), 3);
+        assert_eq!(d.numerator, Numerator::Half);
+        assert_eq!(d.denominator.value(), 2);
+        assert_eq!(d.dots.value(), 3);
     }
 
     #[test]

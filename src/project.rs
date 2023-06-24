@@ -174,8 +174,23 @@ impl ProjectImpl {
                     Ok(sum as u32)
                 }
             } else {
-                Err(LocationError::Overflow)
-            }
+                let tick = match self.last_bar() {
+                    None => {
+                        loc.bar_no() * (self.rhythm.tick_len() as usize) + loc.offset()
+                    },
+                    Some((last_bar_no, last_bar)) => {
+                        let last_tick = last_bar.start_tick;
+                        let tick_len = self.rhythm_at(last_tick).tick_len() as usize;
+                        (loc.bar_no() - last_bar_no - 1) * tick_len + loc.offset() + last_bar.start_tick as usize
+                    },
+                };
+
+                if (u32::MAX as usize) < tick {
+                    Err(LocationError::Overflow)
+                } else {
+                    Ok(tick as u32)
+                }
+    }
         }
     }
     
@@ -212,9 +227,10 @@ impl ProjectImpl {
         self.rhythm
     }
     
+    /// Returns bar no(0 offset) and bar.
     #[inline]
-    fn last_bar(&self) -> Option<Bar> {
-        self.bar_repo.peek_last().map(|(_, bar)| bar.clone())
+    fn last_bar(&self) -> Option<(usize, Bar)> {
+        self.bar_repo.peek_last().map(|(_, bar)| (self.bar_repo.len() - 1, bar.clone()))
     }
     
     fn note_max_end_tick(&self) -> Option<u32> {
@@ -248,7 +264,7 @@ impl ProjectImpl {
     
     /// Returns replenished bars.
     fn replenish_bars(&mut self) -> Vec<Bar> {
-        let mut bar_tick = self.last_bar().map(|b| b.start_tick).unwrap_or(0);
+        let mut bar_tick = self.last_bar().map(|(_, b)| b.start_tick).unwrap_or(0);
         let max_end_tick = 
         self.note_max_end_tick().unwrap_or(0)
         .max(self.tempo_max_tick().unwrap_or(0))
@@ -866,39 +882,55 @@ mod tests {
         assert_eq!(store.model().location_to_tick(Location::new(0, 1)), Ok(1));
         assert_eq!(store.model().location_to_tick(Location::new(0, u32::MAX as usize)), Ok(u32::MAX));
         assert_eq!(store.model().location_to_tick(Location::new(0, u32::MAX as usize + 1)), Err(LocationError::Overflow));
-        assert_eq!(store.model().location_to_tick(Location::new(1, 1)), Err(LocationError::Overflow));
-        
-        let bar = Bar::new(
-            100,
-            None,
-            None,
-            DcFine::Null,
-            EndOrRegion::Null,
-            RepeatStart::Null
+        assert_eq!(
+            store.model().location_to_tick(Location::new(1, 1)),
+            Ok(store.model().rhythm().tick_len() + 1)
         );
-        store.add_bar(bar, false);
+        
+        let bar0 = Bar::new(
+            100, None,
+            None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null
+        );
+        store.add_bar(bar0, false);
         
         assert_eq!(store.model().location_to_tick(Location::new(0, 0)), Ok(0));
         assert_eq!(store.model().location_to_tick(Location::new(0, 1)), Ok(1));
         assert_eq!(store.model().location_to_tick(Location::new(1, 1)), Ok(101));
         assert_eq!(store.model().location_to_tick(Location::new(1, (u32::MAX as usize) - 100)), Ok(u32::MAX));
         assert_eq!(store.model().location_to_tick(Location::new(1, (u32::MAX as usize) - 99)), Err(LocationError::Overflow));
-        assert_eq!(store.model().location_to_tick(Location::new(2, 0)), Err(LocationError::Overflow));
+
+        // 0   bar0(t=100)
+        //     |
+        assert_eq!(store.model().location_to_tick(Location::new(2, 1)), Ok(100 + store.model().rhythm().tick_len() + 1));
         
-        let bar = Bar::new(
-            1000,
-            None,
-            None,
-            DcFine::Null,
-            EndOrRegion::Null,
-            RepeatStart::Null
+        let bar1 = Bar::new(
+            1000, None,
+            None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null
         );
-        store.add_bar(bar, false);
+        store.add_bar(bar1, false);
         
         assert_eq!(store.model().location_to_tick(Location::new(0, 0)), Ok(0));
         assert_eq!(store.model().location_to_tick(Location::new(0, 1)), Ok(1));
         assert_eq!(store.model().location_to_tick(Location::new(1, 1)), Ok(101));
         assert_eq!(store.model().location_to_tick(Location::new(2, 0)), Ok(1000));
+
+        let bar2 = Bar::new(
+            2000, Some(Rhythm::new(2, 4)),
+            None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null
+        );
+        store.add_bar(bar2, false);
+
+        let bar3 = Bar::new(
+            3000, None,
+            None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null
+        );
+        store.add_bar(bar3, false);
+
+        // 0   bar0(t=100)  bar1(t=1000) bar2(t=2000 r=2/4) bar3(t = 3000)
+        //     |            |            |                  |
+        assert_eq!(store.model().location_to_tick(Location::new(4, 1)), Ok(3001));
+        assert_eq!(store.model().location_to_tick(Location::new(5, 1)), Ok(3000 + 480 + 1));
+
     }
     
     #[test]
@@ -960,7 +992,7 @@ mod tests {
             None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null
         );
         store.add_bar(bar0, false);
-        assert_eq!(store.model().last_bar(), Some(bar0));
+        assert_eq!(store.model().last_bar().map(|(_, bar)| bar), Some(bar0));
         
         assert_eq!(store.model().rhythm_at(0), Rhythm::new(6, 8));
         assert_eq!(store.model().rhythm_at(99), Rhythm::new(6, 8));
@@ -972,21 +1004,21 @@ mod tests {
             None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null
         );
         store.add_bar(bar1, false);
-        assert_eq!(store.model().last_bar(), Some(bar1));
+        assert_eq!(store.model().last_bar().map(|(_, bar)| bar), Some(bar1));
         
         let bar2 = Bar::new(
             300, None,
             None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null
         );
         store.add_bar(bar2, false);
-        assert_eq!(store.model().last_bar(), Some(bar2));
+        assert_eq!(store.model().last_bar().map(|(_, bar)| bar), Some(bar2));
         
         let bar3 = Bar::new(
             400, Some(Rhythm::new(4, 4)),
             None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null
         );
         store.add_bar(bar3, false);
-        assert_eq!(store.model().last_bar(), Some(bar3));
+        assert_eq!(store.model().last_bar().map(|(_, bar)| bar), Some(bar3));
         
         assert_eq!(store.model().rhythm_at(0), Rhythm::new(6, 8));
         assert_eq!(store.model().rhythm_at(99), Rhythm::new(6, 8));
@@ -1020,7 +1052,7 @@ mod tests {
             Trimmer::ZERO
         );
         
-        let end_tick0 = note0.base_start_tick() + note0.tick_len();
+        let end_tick0 = note0.base_start_tick + note0.tick_len();
         store.add_note(note0, false);
         assert_eq!(store.model().note_max_end_tick(), Some(end_tick0));
         
@@ -1033,7 +1065,7 @@ mod tests {
         );
         
         store.add_note(note1.clone(), false);
-        assert_eq!(store.model().note_max_end_tick(), Some(note1.base_start_tick() + note1.tick_len()));
+        assert_eq!(store.model().note_max_end_tick(), Some(note1.base_start_tick + note1.tick_len()));
         
         let _ = store.add_note(
             Note::new( // end tick: 200 + 120 * 2.5 = 440
@@ -1045,7 +1077,7 @@ mod tests {
             ), false
         );
         
-        assert_eq!(store.model().note_max_end_tick(), Some(note1.base_start_tick() + note1.tick_len()));
+        assert_eq!(store.model().note_max_end_tick(), Some(note1.base_start_tick + note1.tick_len()));
     }
     
     #[test]
@@ -1168,15 +1200,15 @@ mod tests {
         let mut z = store.model().note_repo().iter();
         let (tick, note) = z.next().unwrap();
         assert_eq!(*tick, 100);
-        assert_eq!(note.duration(), Duration::new(Numerator::N8th, Denominator::from_value(3).unwrap(), Dots::ZERO));
+        assert_eq!(note.duration, Duration::new(Numerator::N8th, Denominator::from_value(3).unwrap(), Dots::ZERO));
         
         let (tick, note) = z.next().unwrap();
         assert_eq!(*tick, 100 + 80);
-        assert_eq!(note.duration(), Duration::new(Numerator::N8th, Denominator::from_value(3).unwrap(), Dots::ZERO));
+        assert_eq!(note.duration, Duration::new(Numerator::N8th, Denominator::from_value(3).unwrap(), Dots::ZERO));
         
         let (tick, note) = z.next().unwrap();
         assert_eq!(*tick, 100 + 80 * 2);
-        assert_eq!(note.duration(), Duration::new(Numerator::N8th, Denominator::from_value(3).unwrap(), Dots::ZERO));
+        assert_eq!(note.duration, Duration::new(Numerator::N8th, Denominator::from_value(3).unwrap(), Dots::ZERO));
         
         store.undo();
         assert_eq!(store.model().note_repo().len(), 3);
@@ -1184,15 +1216,15 @@ mod tests {
         let mut z = store.model().note_repo().iter();
         let (tick, note) = z.next().unwrap();
         assert_eq!(*tick, 100);
-        assert_eq!(note.duration(), Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO));
+        assert_eq!(note.duration, Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO));
         
         let (tick, note) = z.next().unwrap();
         assert_eq!(*tick, 120);
-        assert_eq!(note.duration(), Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO));
+        assert_eq!(note.duration, Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO));
         
         let (tick, note) = z.next().unwrap();
         assert_eq!(*tick, 150);
-        assert_eq!(note.duration(), Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO));
+        assert_eq!(note.duration, Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO));
     }
     
     #[test]
@@ -1453,17 +1485,17 @@ mod tests {
         store.undo();
         assert_eq!(store.model().note_repo.len(), 3);
         assert_eq!(store.model().bar_repo.len(), 1);
-        assert_eq!(store.model().note_repo.get(100u32)[0].pitch().solfa(), Solfa::C);
-        assert_eq!(store.model().note_repo.get(110u32)[0].pitch().solfa(), Solfa::D);
-        assert_eq!(store.model().note_repo.get(120u32)[0].pitch().solfa(), Solfa::E);
+        assert_eq!(store.model().note_repo.get(100u32)[0].pitch.solfa(), Solfa::C);
+        assert_eq!(store.model().note_repo.get(110u32)[0].pitch.solfa(), Solfa::D);
+        assert_eq!(store.model().note_repo.get(120u32)[0].pitch.solfa(), Solfa::E);
         
         store.redo();
         assert_eq!(store.model().note_repo.len(), 3);
         assert_eq!(store.model().bar_repo.len(), 1);
         
-        assert_eq!(store.model().note_repo.get(100u32)[0].pitch().solfa(), Solfa::C);
-        assert_eq!(store.model().note_repo.get(180u32)[0].pitch().solfa(), Solfa::D);
-        assert_eq!(store.model().note_repo.get(260u32)[0].pitch().solfa(), Solfa::E);
+        assert_eq!(store.model().note_repo.get(100u32)[0].pitch.solfa(), Solfa::C);
+        assert_eq!(store.model().note_repo.get(180u32)[0].pitch.solfa(), Solfa::D);
+        assert_eq!(store.model().note_repo.get(260u32)[0].pitch.solfa(), Solfa::E);
         
     }
 

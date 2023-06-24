@@ -1,6 +1,6 @@
 use std::{rc::Rc, ops::Index, collections::HashSet};
 
-use super::{note::{Note, NoteBuilder}, have_start_tick::HaveBaseStartTick, duration::{Duration, Denominator}};
+use super::{note::{Note}, have_start_tick::HaveBaseStartTick, duration::{Duration, Denominator}};
 use gcd::Gcd;
 
 pub fn tuplize(mut notes: Vec<Rc<Note>>) -> Vec<Rc<Note>> {
@@ -22,11 +22,11 @@ pub fn tuplize(mut notes: Vec<Rc<Note>>) -> Vec<Rc<Note>> {
                 TupleElem::None => {},
                 TupleElem::Some { start_tick: _, notes, min_duration: _ } => {
                     for n in notes.iter() {
-                        let mut b = NoteBuilder::new(n);
-                        b.base_start_tick = (start_tick + (total_tick * u / total_unit)) as u32;
-                        b.duration = n.duration().with_denominator(denominator);
-                        ret.push(Rc::new(b.build()));
-                        u += numerator_unit(b.duration);
+                        let mut note = (**n).clone();
+                        note.base_start_tick = (start_tick + (total_tick * u / total_unit)) as u32;
+                        note.duration = n.duration.with_denominator(denominator);
+                        u += numerator_unit(note.duration);
+                        ret.push(Rc::new(note));
                     }
                 },
             }
@@ -91,7 +91,7 @@ impl TupleElem {
     }
 
     fn add(self, note: Rc<Note>) -> SingleOrDouble<Self> {
-        let duration = note.duration().with_denominator(Denominator::from_value(2).unwrap());
+        let duration = note.duration.with_denominator(Denominator::from_value(2).unwrap());
         match self {
             TupleElem::None =>
                 SingleOrDouble::Single(TupleElem::Some {
@@ -137,8 +137,8 @@ impl TupleElem {
 // Whole = 256
 #[inline]
 fn numerator_unit(dur: Duration) -> u32 {
-    let len: u32 = 1 << (8 - dur.numerator().ord());
-    len + (len - (len >> dur.dots().value()))
+    let len: u32 = 1 << (8 - dur.numerator.ord());
+    len + (len - (len >> dur.dots.value()))
 }
 
 #[inline]
@@ -155,7 +155,7 @@ fn sort_by_start_tick(notes: &mut [Rc<Note>]) -> (Option<u32>, Vec<TupleElem>) {
     let mut numerator_units = HashSet::new();
 
     for note in notes.iter() {
-        numerator_units.insert(numerator_unit(note.duration()) as u32);
+        numerator_units.insert(numerator_unit(note.duration) as u32);
         match cur.add(note.clone()) {
             SingleOrDouble::Single(e) => {
                 cur = e;
@@ -287,14 +287,14 @@ mod tests {
         );
 
         let result = tuplize(vec![note0, note1, note2]);
-        assert_eq!(result[0].base_start_tick(), 10);
-        assert_eq!(result[0].duration(), Duration::new(Numerator::N8th, Denominator::from_value(3).unwrap(), Dots::ZERO));
+        assert_eq!(result[0].base_start_tick, 10);
+        assert_eq!(result[0].duration, Duration::new(Numerator::N8th, Denominator::from_value(3).unwrap(), Dots::ZERO));
 
-        assert_eq!(result[1].base_start_tick(), 10 + 80);
-        assert_eq!(result[1].duration(), Duration::new(Numerator::N8th, Denominator::from_value(3).unwrap(), Dots::ZERO));
+        assert_eq!(result[1].base_start_tick, 10 + 80);
+        assert_eq!(result[1].duration, Duration::new(Numerator::N8th, Denominator::from_value(3).unwrap(), Dots::ZERO));
 
-        assert_eq!(result[2].base_start_tick(), 10 + 80 * 2);
-        assert_eq!(result[2].duration(), Duration::new(Numerator::N8th, Denominator::from_value(3).unwrap(), Dots::ZERO));
+        assert_eq!(result[2].base_start_tick, 10 + 80 * 2);
+        assert_eq!(result[2].duration, Duration::new(Numerator::N8th, Denominator::from_value(3).unwrap(), Dots::ZERO));
     }
 
     #[test]
@@ -316,13 +316,13 @@ mod tests {
         );
 
         let result = tuplize(vec![note0, note1, note2]);
-        assert_eq!(result[0].base_start_tick(), 0);
-        assert_eq!(result[0].duration(), Duration::new(Numerator::N8th, Denominator::from_value(3).unwrap(), Dots::ZERO));
+        assert_eq!(result[0].base_start_tick, 0);
+        assert_eq!(result[0].duration, Duration::new(Numerator::N8th, Denominator::from_value(3).unwrap(), Dots::ZERO));
 
-        assert_eq!(result[1].base_start_tick(), 80);
-        assert_eq!(result[1].duration(), Duration::new(Numerator::N8th, Denominator::from_value(3).unwrap(), Dots::ZERO));
+        assert_eq!(result[1].base_start_tick, 80);
+        assert_eq!(result[1].duration, Duration::new(Numerator::N8th, Denominator::from_value(3).unwrap(), Dots::ZERO));
 
-        assert_eq!(result[2].base_start_tick(), 160);
-        assert_eq!(result[2].duration(), Duration::new(Numerator::N8th, Denominator::from_value(3).unwrap(), Dots::ZERO));
+        assert_eq!(result[2].base_start_tick, 160);
+        assert_eq!(result[2].duration, Duration::new(Numerator::N8th, Denominator::from_value(3).unwrap(), Dots::ZERO));
     }
 }

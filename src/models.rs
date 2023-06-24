@@ -51,6 +51,46 @@ impl Models {
         }
     }
 
+    pub fn move_to_tick(mut self, tick: u32) -> Self {
+        let mut smallest_tick: u32 = u32::MAX;
+        for n in self.notes.iter() {
+            smallest_tick = std::cmp::min(n.base_start_tick, smallest_tick);
+        }
+        for b in self.bars.iter() {
+            smallest_tick = std::cmp::min(b.start_tick, smallest_tick);
+        }
+        for t in self.tempos.iter() {
+            smallest_tick = std::cmp::min(t.start_tick, smallest_tick);
+        }
+        for d in self.dumpers.iter() {
+            smallest_tick = std::cmp::min(d.start_tick, smallest_tick);
+        }
+        for s in self.softs.iter() {
+            smallest_tick = std::cmp::min(s.start_tick, smallest_tick);
+        }
+
+        let offset: i64 = (tick as i64) - (smallest_tick as i64);
+        if offset == 0 { return self }
+
+        for n in self.notes.iter_mut() {
+            n.base_start_tick = ((n.base_start_tick as i64) + offset) as u32;
+        }
+        for b in self.bars.iter_mut() {
+            b.start_tick = ((b.start_tick as i64) + offset) as u32;
+        }
+        for t in self.tempos.iter_mut() {
+            t.start_tick = ((t.start_tick as i64) + offset) as u32;
+        }
+        for d in self.dumpers.iter_mut() {
+            d.start_tick = ((d.start_tick as i64) + offset) as u32;
+        }
+        for s in self.softs.iter_mut() {
+            s.start_tick = ((s.start_tick as i64) + offset) as u32;
+        }
+
+        self
+    }
+
     pub fn with_notes(mut self, notes: &[Rc<Note>]) -> Self {
         self.notes = Self::unwrap_rc(notes);
         self
@@ -168,7 +208,7 @@ impl ModelChanges {
 
 #[cfg(test)]
 mod clipboard_tests {
-    use crate::{models::{Models, FromClipboardTextErr}, note::Note, pitch::Pitch, solfa::Solfa, octave::Octave, sharp_flat::SharpFlat, duration::{self, Duration, Dots}, velocity::Velocity, trimmer::{Trimmer, RateTrimmer}, bar::{Bar, DcFine, EndOrRegion, RepeatStart}};
+    use crate::{models::{Models, FromClipboardTextErr}, note::Note, pitch::Pitch, solfa::Solfa, octave::Octave, sharp_flat::SharpFlat, duration::{self, Duration, Dots}, velocity::Velocity, trimmer::{Trimmer, RateTrimmer}, bar::{Bar, DcFine, EndOrRegion, RepeatStart}, tempo::Tempo, ctrl_chg::CtrlChg};
 
     #[test]
     fn parse_empty() {
@@ -224,5 +264,44 @@ mod clipboard_tests {
 
         let restored = Models::from_clipboard_text(json).unwrap();
         assert_eq!(restored, models);
+    }
+
+    #[test]
+    fn move_to_tick() {
+        let pitch = Pitch::new(Solfa::C, Octave::Oct0, SharpFlat::Null);
+        let note = Note::new(
+            100, pitch,
+            Duration::new(duration::Numerator::Quarter, duration::Denominator::from_value(2).unwrap(), Dots::ONE),
+            false, false, Velocity::new(10), Trimmer::ZERO,
+            RateTrimmer::new(1.0, 1.0, 1.0, 1.0),
+            Trimmer::ZERO
+        );
+
+        let bar = Bar::new(
+            110,
+            None, None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null
+        );
+
+        let tempo0 = Tempo::new(110, 200);
+        let tempo1 = Tempo::new(114, 205);
+            
+        let dumper = CtrlChg::new(120, Velocity::new(64));
+
+        let soft = CtrlChg::new(90, Velocity::new(64));
+
+        let mut models = Models {
+            notes: vec![note],
+            bars: vec![bar],
+            tempos: vec![tempo0, tempo1],
+            dumpers: vec![dumper],
+            softs: vec![soft]
+        }.move_to_tick(50);
+
+        assert_eq!(models.notes[0].base_start_tick, 60);
+        assert_eq!(models.bars[0].start_tick, 70);
+        assert_eq!(models.tempos[0].start_tick, 70);
+        assert_eq!(models.tempos[1].start_tick, 74);
+        assert_eq!(models.dumpers[0].start_tick, 80);
+        assert_eq!(models.softs[0].start_tick, 50);
     }
 }
