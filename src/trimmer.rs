@@ -31,7 +31,7 @@ impl Trimmer {
     pub const fn new(value0: i16, value1: i16, value2: i16, value3: i16) -> Self {
         Self {
             values: [value0, value1, value2, value3],
-            sum: (value0 + value1 + value2 + value3) as i32,
+            sum: value0 as i32 + value1 as i32 + value2 as i32 + value3 as i32,
         }
     }
 
@@ -69,10 +69,30 @@ impl Trimmer {
         self.sum
     }
 
-    pub fn updated<F>(self, mut f: F) -> Trimmer where F: FnMut(&mut [i16; 4]) {
+    pub fn updated<F>(self, mut f: F) -> Trimmer where F: FnOnce(&mut [i16; 4]) {
         let mut values = self.values;
         f(&mut values);
         Self::from_array(values)
+    }
+
+    pub fn added(mut self, mut tick: i32) -> Self {
+        for i in 0..4 {
+            let t: i32 = self.values[i] as i32 + tick as i32;
+            if (i16::MAX as i32) < t {
+                tick = t - i16::MAX as i32;
+                self.values[i] = i16::MAX;
+            } else if t < (i16::MIN as i32) {
+                tick = t - i16::MIN as i32;
+                self.values[i] = i16::MIN;
+            } else {
+                self.values[i] = t as i16;
+                break;
+            }
+        }
+
+        self.sum = self.values[0] as i32 +self.values[1] as i32 +
+            self.values[2] as i32 + self.values[3] as i32;
+        return self;
     }
 }
 
@@ -261,5 +281,34 @@ mod tests {
 
         let v = RateTrimmer::from_array([PercentU16::HUNDRED, PercentU16::HUNDRED, PercentU16::HUNDRED, PercentU16::HUNDRED]);
         assert_eq!(v.sum(), PercentU16::HUNDRED);
+    }
+
+    #[test]
+    fn added() {
+        let v0 = Trimmer::new(0, 1, 2, 3);
+        assert_eq!(
+            v0.added(100),
+            Trimmer::new(100, 1, 2, 3)
+        );
+        assert_eq!(
+            v0.added(i16::MAX as i32 + 1),
+            Trimmer::new(i16::MAX, 2, 2, 3)
+        );
+        assert_eq!(
+            v0.added(i16::MAX as i32 * 2),
+            Trimmer::new(i16::MAX, i16::MAX, 3, 3)
+        );
+        assert_eq!(
+            v0.added(i16::MAX as i32 * 3),
+            Trimmer::new(i16::MAX, i16::MAX, i16::MAX, 6)
+        );
+        assert_eq!(
+            v0.added(i16::MAX as i32 * 4 - 6),
+            Trimmer::new(i16::MAX, i16::MAX, i16::MAX, i16::MAX)
+        );
+        assert_eq!(
+            v0.added(i16::MAX as i32 * 4 - 5),
+            Trimmer::new(i16::MAX, i16::MAX, i16::MAX, i16::MAX)
+        );
     }
 }

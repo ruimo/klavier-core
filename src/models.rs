@@ -289,7 +289,7 @@ mod clipboard_tests {
 
         let soft = CtrlChg::new(90, Velocity::new(64));
 
-        let mut models = Models {
+        let models = Models {
             notes: vec![note],
             bars: vec![bar],
             tempos: vec![tempo0, tempo1],

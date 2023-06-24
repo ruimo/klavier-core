@@ -164,17 +164,23 @@ impl Note {
         }
     }
     
-    pub fn with_tick_added(&self, tick_delta: i32) -> Result<Self, TickError> {
+    pub fn with_tick_added(&self, tick_delta: i32, is_trim: bool) -> Result<Self, TickError> {
         let tick = self.base_start_tick as i64 + tick_delta as i64;
         if tick < 0 {
             Err(TickError::Minus)
         } else {
-            Ok(
-                Self {
-                    base_start_tick: tick as u32,
-                    ..*self
-                }
-            )
+            if is_trim {
+                let mut copied = self.clone();
+                copied.start_tick_trimmer = self.start_tick_trimmer.added(tick_delta);
+                Ok(copied)
+            } else {
+                Ok(
+                    Self {
+                        base_start_tick: tick as u32,
+                        ..*self
+                    }
+                )
+            }
         }
     }
     
@@ -395,9 +401,9 @@ mod tests {
             RateTrimmer::new(1.0, 0.5, 2.0, 1.5), // duration_trimmer
             Trimmer::ZERO, // velocity_trimmer
         );
-        assert_eq!(note.with_tick_added(10).unwrap().start_tick(), 133);
-        assert_eq!(note.with_tick_added(-122).unwrap().start_tick(), 1);
-        assert_eq!(note.with_tick_added(-123).unwrap().start_tick(), 0);
-        assert!(note.with_tick_added(-124).is_err());
+        assert_eq!(note.with_tick_added(10, true).unwrap().start_tick(), 133);
+        assert_eq!(note.with_tick_added(-122, true).unwrap().start_tick(), 1);
+        assert_eq!(note.with_tick_added(-123, true).unwrap().start_tick(), 0);
+        assert!(note.with_tick_added(-124, true).is_err());
     }
 }
