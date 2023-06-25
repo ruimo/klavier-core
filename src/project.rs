@@ -57,47 +57,114 @@ impl ModelChangeMetadata {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(from = "ExportedProject", into = "ExportedProject")]
 pub struct ProjectImpl {
     rhythm: Rhythm,
     key: Key,
     grid: Grid,
     
-    #[serde(skip)]
-    #[serde(default = "new_note_repo")]
     note_repo: BagStore<u32, Rc<Note>, ModelChangeMetadata>, // by start tick.
     
-    #[serde(skip)]
-    #[serde(default = "new_bar_repo")]
     bar_repo: Store<u32, Bar, ModelChangeMetadata>,
     
-    #[serde(skip)]
-    #[serde(default = "new_tempo_repo")]
     tempo_repo: Store<u32, Tempo, ModelChangeMetadata>,
     
-    #[serde(skip)]
-    #[serde(default = "new_ctrlchg_repo")]
     dumper_repo: Store<u32, CtrlChg, ModelChangeMetadata>,
     
-    #[serde(skip)]
-    #[serde(default = "new_ctrlchg_repo")]
     soft_repo: Store<u32, CtrlChg, ModelChangeMetadata>,
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+pub struct ExportedProject {
+    rhythm: Rhythm,
+    key: Key,
+    grid: Grid,
+    models: Models,
+}
+
+impl From<ExportedProject> for ProjectImpl {
+    fn from(exported: ExportedProject) -> Self {
+        let mut note_repo: BagStore<u32, Rc<Note>, ModelChangeMetadata> = BagStore::new(true);
+        note_repo.bulk_add(exported.models.notes.into_iter().map(|n| (n.start_tick(), Rc::new(n))).collect(), ModelChangeMetadata::new());
+        note_repo.clear_events();
+
+        let mut bar_repo: Store<u32, Bar, ModelChangeMetadata> = Store::new(true);
+        bar_repo.bulk_add(exported.models.bars.into_iter().map(|b| (b.start_tick, b)).collect(), ModelChangeMetadata::new());
+        bar_repo.clear_events();
+
+        let mut tempo_repo: Store<u32, Tempo, ModelChangeMetadata> = Store::new(true);
+        tempo_repo.bulk_add(exported.models.tempos.into_iter().map(|t| (t.start_tick, t)).collect(), ModelChangeMetadata::new());
+        tempo_repo.clear_events();
+
+        let mut dumper_repo: Store<u32, CtrlChg, ModelChangeMetadata> = Store::new(true);
+        dumper_repo.bulk_add(exported.models.dumpers.into_iter().map(|d| (d.start_tick, d)).collect(), ModelChangeMetadata::new());
+        dumper_repo.clear_events();
+
+        let mut soft_repo: Store<u32, CtrlChg, ModelChangeMetadata> = Store::new(true);
+        soft_repo.bulk_add(exported.models.softs.into_iter().map(|s| (s.start_tick, s)).collect(), ModelChangeMetadata::new());
+        soft_repo.clear_events();
+
+        ProjectImpl {
+            rhythm: exported.rhythm,
+            key: exported.key,
+            grid: exported.grid,
+            note_repo, bar_repo, tempo_repo, dumper_repo, soft_repo
+        }
+    }
+}
+
+impl Into<ExportedProject> for ProjectImpl {
+    fn into(self) -> ExportedProject {
+        let mut notes: Vec<Note> = Vec::with_capacity(self.note_repo.len());
+        for (_, n) in self.note_repo.iter() {
+            notes.push((**n).clone());
+        }
+
+        let mut bars: Vec<Bar> = Vec::with_capacity(self.bar_repo.len());
+        for (_, b) in self.bar_repo.iter() {
+            bars.push(*b);
+        }
+
+        let mut tempos: Vec<Tempo> = Vec::with_capacity(self.tempo_repo.len());
+        for (_, t) in self.tempo_repo.iter() {
+            tempos.push(*t);
+        }
+
+        let mut dumpers: Vec<CtrlChg> = Vec::with_capacity(self.dumper_repo.len());
+        for (_, d) in self.dumper_repo.iter() {
+            dumpers.push(*d);
+        }
+
+        let mut softs: Vec<CtrlChg> = Vec::with_capacity(self.soft_repo.len());
+        for (_, s) in self.soft_repo.iter() {
+            softs.push(*s);
+        }
+
+        ExportedProject {
+            rhythm: self.rhythm,
+            key: self.key,
+            grid: self.grid,
+            models: Models { notes, bars, tempos, dumpers, softs }
+        }
+    }
+}
+
 fn new_note_repo() -> BagStore<u32, Rc<Note>, ModelChangeMetadata> {
-    BagStore::new(false)
+    BagStore::new(true)
 }
 
 fn new_bar_repo() -> Store<u32, Bar, ModelChangeMetadata> {
-    Store::new(false)
+    Store::new(true)
 }
 
 fn new_tempo_repo() -> Store<u32, Tempo, ModelChangeMetadata> {
-    Store::new(false)
+    Store::new(true)
 }
 
 fn new_ctrlchg_repo() -> Store<u32, CtrlChg, ModelChangeMetadata> {
-    Store::new(false)
+    Store::new(true)
 }
 
 impl ProjectImpl {
@@ -583,7 +650,7 @@ impl Project for SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr> {
                     to_remove.push((n.start_tick(), n.clone()));
                 }
                 let tupled = tuple::tuplize(notes.clone());
-                proj.note_repo.remove_all(&to_remove);
+                proj.note_repo.bulk_remove(&to_remove, ModelChangeMetadata::new());
                 proj.note_repo.bulk_add(
                     tupled.iter().map(|n| (n.start_tick(), n.clone())).collect(),
                     metadata
@@ -1233,12 +1300,24 @@ mod tests {
         proj.key = Key::FLAT_2;
         proj.rhythm = Rhythm::new(3, 4);
         
+        let note0 = Rc::new(Note::new(
+            100,
+            Pitch::new(Solfa::C, Octave::Oct4, SharpFlat::Null),
+            Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
+            false, false,
+            Velocity::new(64),
+            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO
+        ));
+        proj.note_repo.add(note0.start_tick(), note0.clone(), ModelChangeMetadata::new());
+
         let ser = bincode::serialize(&proj).unwrap();
         
         let des: ProjectImpl = bincode::deserialize(&ser).unwrap();
         
         assert_eq!(proj.key, des.key);
         assert_eq!(proj.rhythm, des.rhythm);
+        assert_eq!(des.note_repo.len(), 1);
+        assert_eq!(*des.note_repo.iter().map(|(_, n)| n).next().unwrap(), note0);
     }
     
     use tempfile::tempdir;

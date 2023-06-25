@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-klavier-helper = "0.1.2-beta.3"
+klavier-helper = "0.1.2-beta.5"
 #klavier-helper = { path = "../klavier-helper" }
 serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
