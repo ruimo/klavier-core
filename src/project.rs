@@ -151,22 +151,6 @@ impl Into<ExportedProject> for ProjectImpl {
     }
 }
 
-fn new_note_repo() -> BagStore<u32, Rc<Note>, ModelChangeMetadata> {
-    BagStore::new(true)
-}
-
-fn new_bar_repo() -> Store<u32, Bar, ModelChangeMetadata> {
-    Store::new(true)
-}
-
-fn new_tempo_repo() -> Store<u32, Tempo, ModelChangeMetadata> {
-    Store::new(true)
-}
-
-fn new_ctrlchg_repo() -> Store<u32, CtrlChg, ModelChangeMetadata> {
-    Store::new(true)
-}
-
 impl ProjectImpl {
     pub fn note_repo(&self) -> &BagStore<u32, Rc<Note>, ModelChangeMetadata> {
         &self.note_repo
@@ -519,8 +503,11 @@ pub enum ProjectCmdErr {
 
 pub trait Project {
     fn set_rhythm(&mut self, rhythm: Rhythm);
+    fn rhythm(&self) -> Rhythm;
     fn set_key(&mut self, key: Key);
+    fn key(&self) -> Key;
     fn set_grid(&mut self, key: Grid);
+    fn grid(&self) -> Grid;
     fn add_note(&mut self, note: Note, select: bool);
     fn add_bar(&mut self, bar: Bar, select: bool);
     fn add_tempo(&mut self, bar: Tempo, select: bool);
@@ -550,12 +537,24 @@ impl Project for SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr> {
         self.add_cmd(ProjectCmd::SetRhythm(self.model().rhythm, rhythm));
     }
     
+    fn rhythm(&self) -> Rhythm {
+        self.model().rhythm
+    }
+
     fn set_key(&mut self, key: Key) {
         self.add_cmd(ProjectCmd::SetKey(self.model().key, key));
+    }
+
+    fn key(&self) -> Key {
+        self.model().key
     }
     
     fn set_grid(&mut self, grid: Grid) {
         self.add_cmd(ProjectCmd::SetGrid(self.model().grid, grid));
+    }
+
+    fn grid(&self) -> Grid {
+        self.model().grid
     }
     
     fn add_note(&mut self, note: Note, select: bool) {
