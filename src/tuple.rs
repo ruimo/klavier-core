@@ -62,6 +62,7 @@ impl Index<usize> for TupleElem {
 }
 
 impl TupleElem {
+    #[cfg(test)]
     fn len(&self) -> usize {
         match self {
             TupleElem::None => 0,
@@ -69,6 +70,7 @@ impl TupleElem {
         }
     }
 
+    #[cfg(test)]
     fn contains(&self, note: &Rc<Note>) -> bool {
         match self {
             TupleElem::None => false,

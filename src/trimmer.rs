@@ -69,7 +69,7 @@ impl Trimmer {
         self.sum
     }
 
-    pub fn updated<F>(self, mut f: F) -> Trimmer where F: FnOnce(&mut [i16; 4]) {
+    pub fn updated<F>(self, f: F) -> Trimmer where F: FnOnce(&mut [i16; 4]) {
         let mut values = self.values;
         f(&mut values);
         Self::from_array(values)
