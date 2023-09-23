@@ -26,6 +26,14 @@ pub enum LocationError {
     Overflow,
 }
 
+impl std::fmt::Display for LocationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Overflow => write!(f, "Location overflow"),
+        }
+    }
+}
+
 #[derive(PartialEq, Debug)]
 pub enum ChangeRepoType {
     MoveSelected,
@@ -241,7 +249,7 @@ impl ProjectImpl {
                 } else {
                     Ok(tick as u32)
                 }
-    }
+            }
         }
     }
     
@@ -497,8 +505,19 @@ impl Cmd for ProjectCmd {
 impl SerializableCmd for ProjectCmd {
 }
 
+#[derive(Debug)]
 pub enum ProjectCmdErr {
     NoOp,
+}
+
+impl error_stack::Context for ProjectCmdErr {}
+
+impl std::fmt::Display for ProjectCmdErr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ProjectCmdErr::NoOp => write!(f, "No Operation"),
+        }
+    }
 }
 
 pub trait Project {
@@ -664,7 +683,7 @@ impl Project for SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr> {
                     }
                 )
             } else {
-                Err(ProjectCmdErr::NoOp)
+                Err(error_stack::report!(ProjectCmdErr::NoOp))
             }
         }));
         
@@ -870,7 +889,7 @@ mod tests {
     use std::rc::Rc;
     use klavier_helper::store::Store;
     use serdo::undo_store::{SqliteUndoStore, UndoStore};
-    use crate::{tempo::{Tempo, TempoValue}, project::{tempo_at, LocationError, ProjectCmd, ProjectCmdErr, ModelChangeMetadata, ProjectStore}, note::Note, solfa::Solfa, octave::Octave, sharp_flat::SharpFlat, pitch::Pitch, duration::{Duration, Numerator, Denominator, Dots}, velocity::Velocity, trimmer::{Trimmer, RateTrimmer}, bar::{Bar, DcFine, EndOrRegion, RepeatStart}, location::Location, rhythm::Rhythm, ctrl_chg::CtrlChg, key::Key, grid::Grid, models::{Models, ModelChanges}};
+    use crate::{tempo::{Tempo, TempoValue}, project::{tempo_at, ProjectCmd, ProjectCmdErr, ModelChangeMetadata, ProjectStore, LocationError}, note::Note, solfa::Solfa, octave::Octave, sharp_flat::SharpFlat, pitch::Pitch, duration::{Duration, Numerator, Denominator, Dots}, velocity::Velocity, trimmer::{Trimmer, RateTrimmer}, bar::{Bar, DcFine, EndOrRegion, RepeatStart}, location::Location, rhythm::Rhythm, ctrl_chg::CtrlChg, key::Key, grid::Grid, models::{Models, ModelChanges}};
     use super::{DEFAULT_TEMPO, ProjectImpl};
 
     #[test]
@@ -944,13 +963,13 @@ mod tests {
         dir.push("project");
         let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), None).unwrap();
 
-        assert_eq!(store.model().location_to_tick(Location::new(0, 0)), Ok(0));
-        assert_eq!(store.model().location_to_tick(Location::new(0, 1)), Ok(1));
-        assert_eq!(store.model().location_to_tick(Location::new(0, u32::MAX as usize)), Ok(u32::MAX));
+        assert_eq!(store.model().location_to_tick(Location::new(0, 0)).unwrap(), 0);
+        assert_eq!(store.model().location_to_tick(Location::new(0, 1)).unwrap(), 1);
+        assert_eq!(store.model().location_to_tick(Location::new(0, u32::MAX as usize)).unwrap(), u32::MAX);
         assert_eq!(store.model().location_to_tick(Location::new(0, u32::MAX as usize + 1)), Err(LocationError::Overflow));
         assert_eq!(
-            store.model().location_to_tick(Location::new(1, 1)),
-            Ok(store.model().rhythm().tick_len() + 1)
+            store.model().location_to_tick(Location::new(1, 1)).unwrap(),
+            store.model().rhythm().tick_len() + 1
         );
         
         let bar0 = Bar::new(
@@ -959,15 +978,15 @@ mod tests {
         );
         store.add_bar(bar0, false);
         
-        assert_eq!(store.model().location_to_tick(Location::new(0, 0)), Ok(0));
-        assert_eq!(store.model().location_to_tick(Location::new(0, 1)), Ok(1));
-        assert_eq!(store.model().location_to_tick(Location::new(1, 1)), Ok(101));
-        assert_eq!(store.model().location_to_tick(Location::new(1, (u32::MAX as usize) - 100)), Ok(u32::MAX));
+        assert_eq!(store.model().location_to_tick(Location::new(0, 0)).unwrap(), 0);
+        assert_eq!(store.model().location_to_tick(Location::new(0, 1)).unwrap(), 1);
+        assert_eq!(store.model().location_to_tick(Location::new(1, 1)).unwrap(), 101);
+        assert_eq!(store.model().location_to_tick(Location::new(1, (u32::MAX as usize) - 100)).unwrap(), u32::MAX);
         assert_eq!(store.model().location_to_tick(Location::new(1, (u32::MAX as usize) - 99)), Err(LocationError::Overflow));
 
         // 0   bar0(t=100)
         //     |
-        assert_eq!(store.model().location_to_tick(Location::new(2, 1)), Ok(100 + store.model().rhythm().tick_len() + 1));
+        assert_eq!(store.model().location_to_tick(Location::new(2, 1)).unwrap(), 100 + store.model().rhythm().tick_len() + 1);
         
         let bar1 = Bar::new(
             1000, None,
@@ -975,10 +994,10 @@ mod tests {
         );
         store.add_bar(bar1, false);
         
-        assert_eq!(store.model().location_to_tick(Location::new(0, 0)), Ok(0));
-        assert_eq!(store.model().location_to_tick(Location::new(0, 1)), Ok(1));
-        assert_eq!(store.model().location_to_tick(Location::new(1, 1)), Ok(101));
-        assert_eq!(store.model().location_to_tick(Location::new(2, 0)), Ok(1000));
+        assert_eq!(store.model().location_to_tick(Location::new(0, 0)).unwrap(), 0);
+        assert_eq!(store.model().location_to_tick(Location::new(0, 1)).unwrap(), 1);
+        assert_eq!(store.model().location_to_tick(Location::new(1, 1)).unwrap(), 101);
+        assert_eq!(store.model().location_to_tick(Location::new(2, 0)).unwrap(), 1000);
 
         let bar2 = Bar::new(
             2000, Some(Rhythm::new(2, 4)),
@@ -994,8 +1013,8 @@ mod tests {
 
         // 0   bar0(t=100)  bar1(t=1000) bar2(t=2000 r=2/4) bar3(t = 3000)
         //     |            |            |                  |
-        assert_eq!(store.model().location_to_tick(Location::new(4, 1)), Ok(3001));
-        assert_eq!(store.model().location_to_tick(Location::new(5, 1)), Ok(3000 + 480 + 1));
+        assert_eq!(store.model().location_to_tick(Location::new(4, 1)).unwrap(), 3001);
+        assert_eq!(store.model().location_to_tick(Location::new(5, 1)).unwrap(), 3000 + 480 + 1);
 
     }
     

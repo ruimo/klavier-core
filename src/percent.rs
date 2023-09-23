@@ -9,7 +9,11 @@ pub struct PercentU16 {
 
 // 0 - 200%
 const MAX_VALUE: i32 = 2000;
+const MAX_F32_VALUE: f32 = 2.0;
+
 const MIN_VALUE: i32 = 0;
+const MIN_F32_VALUE: f32 = 0.;
+
 const HUNDRED_VALUE: u16 = 1000;
 
 impl PercentU16 {
@@ -38,12 +42,16 @@ impl CanApply<u32> for PercentU16 {
 
 impl From<f32> for PercentU16 {
     fn from(rate: f32) -> Self {
-        let i: i32 = (rate * 1000.0) as i32; // 1.0 means 100% = 100.0% = 1000
-        if i < MIN_VALUE {
+        if rate.is_nan() {
+            return PercentU16 { value: MIN_VALUE as u16 }
+        }
+
+        if rate < MIN_F32_VALUE {
             PercentU16 { value: MIN_VALUE as u16 }
-        } else if MAX_VALUE < i {
+        } else if MAX_F32_VALUE < rate {
             PercentU16 { value: MAX_VALUE as u16 }
         } else {
+            let i: i32 = (rate * 1000.0) as i32; // 1.0 means 100% = 100.0% = 1000
             PercentU16 { value: i as u16 }
         }
     }
@@ -78,5 +86,23 @@ mod tests {
     #[test]
     fn apply() {
         assert_eq!(PercentU16::from(0.5).apply(60), 30);
+    }
+
+    #[test]
+    fn from_f32() {
+        let u: PercentU16 = From::from(f32::NAN);
+        assert_eq!(u, PercentU16::MIN);
+
+        let u: PercentU16 = From::from(2.0);
+        assert_eq!(u, PercentU16::MAX);
+
+        let u: PercentU16 = From::from(100.0);
+        assert_eq!(u, PercentU16::MAX);
+
+        let u: PercentU16 = From::from(0.);
+        assert_eq!(u, PercentU16::MIN);
+
+        let u: PercentU16 = From::from(-100.);
+        assert_eq!(u, PercentU16::MIN);
     }
 }
