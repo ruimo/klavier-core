@@ -1,6 +1,6 @@
 use crate::can_apply::CanApply;
 
-// 0.0% - 6553.5%
+// 0.0% - 200.0%
 #[derive(serde::Deserialize, serde::Serialize)]
 #[derive(Debug, Clone, Copy, Eq)]
 pub struct PercentU16 {
@@ -37,6 +37,12 @@ impl CanApply<u32> for PercentU16 {
     fn apply(self, value: u32) -> u32 {
         let i: i64 = value as i64;
         ((i * self.value as i64) / HUNDRED_VALUE as i64) as u32
+    }
+}
+
+impl ToString for PercentU16 {
+    fn to_string(&self) -> String {
+        self.to_f32().to_string()
     }
 }
 

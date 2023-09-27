@@ -38,19 +38,6 @@ pub struct Note {
     pub velocity_trimmer: Trimmer,
 }
 
-// #[derive(Debug, PartialEq, Eq, Clone)]
-// pub struct NoteBuilder {
-    // pub base_start_tick: u32,
-    // pub pitch: Pitch,
-    // pub duration: Duration,
-    // pub tie: bool,
-    // pub tied: bool,
-    // pub base_velocity: Velocity,
-    // pub start_tick_trimmer: Trimmer,
-    // pub duration_trimmer: RateTrimmer,
-    // pub velocity_trimmer: Trimmer,
-// }
-
 impl Note {
     pub fn new(
         base_start_tick: u32,
@@ -76,57 +63,17 @@ impl Note {
         }
     }
     
-    // #[inline]
-    // pub fn pitch(&self) -> Pitch {
-        // self.pitch
-    // }
-    
-    // #[inline]
-    // pub fn duration(&self) -> Duration {
-        // self.duration
-    // }
-    
-    // #[inline]
-    // pub fn base_start_tick(&self) -> u32 {
-        // self.base_start_tick
-    // }
-
     #[inline]
     pub fn start_tick(&self) -> u32 {
         let tick = self.base_start_tick as i64 + self.start_tick_trimmer.sum() as i64;
         if tick < 0 { 0 } else { tick as u32 }
     }
 
-    // #[inline]
-    // pub fn start_tick_trimmer(&self) -> &Trimmer {
-        // &self.start_tick_trimmer
-    // }
-
-    // #[inline]
-    // pub fn velocity_trimmer(&self) -> &Trimmer {
-        // &self.velocity_trimmer
-    // }
-
-    // #[inline]
-    // pub fn duration_trimmer(&self) -> &RateTrimmer {
-        // &self.duration_trimmer
-    // }
-    
     #[inline]
     pub fn tick_len(&self) -> u32 {
         self.duration_trimmer.apply(self.duration.tick_length())
     }
 
-    // #[inline]
-    // pub fn tie(&self) -> bool {
-        // self.tie
-    // }
-
-    // #[inline]
-    // pub fn tied(&self) -> bool {
-        // self.tied
-    // }
-    
     pub fn up_score_offset(&self) -> Result<Self, PitchError> {
         self.pitch.up().map(|p| {
             Self {
@@ -282,36 +229,6 @@ impl Note {
         Duration::new(Numerator::Whole, Denominator::from_value(2).unwrap(), Dots::SEVEN).tick_length() * (PercentU16::MAX.to_f32() as u32)
     );
 }
-
-// impl NoteBuilder {
-    // pub fn new(note: &Note) -> Self {
-        // Self {
-            // base_start_tick: note.base_start_tick,
-            // pitch: note.pitch,
-            // duration: note.duration,
-            // tie: note.tie,
-            // tied: note.tied,
-            // base_velocity: note.base_velocity,
-            // start_tick_trimmer: note.start_tick_trimmer,
-            // duration_trimmer: note.duration_trimmer,
-            // velocity_trimmer: note.velocity_trimmer,
-        // }
-    // }
-// 
-    // pub fn build(&self) -> Note {
-        // Note::new(
-            // self.base_start_tick,
-            // self.pitch,
-            // self.duration,
-            // self.tie,
-            // self.tied,
-            // self.base_velocity,
-            // self.start_tick_trimmer,
-            // self.duration_trimmer,
-            // self.velocity_trimmer
-        // )
-    // }
-// }
 
 pub const MAX_TICK_LEN: i32 = Duration::TICK_RESOLUTION * 8;
 
