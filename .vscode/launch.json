@@ -8,8 +8,8 @@
             "name": "Run Test Debugger",
             "type": "lldb",
             "request": "launch",
-            "program": "${workspaceFolder}/target/debug/deps/klavier_core-7956a1e401e6d719",
-            "args": ["move_to_tick"],
+            "program": "${workspaceFolder}/target/debug/deps/klavier_core-a1331bcf2dffc6d0",
+            "args": ["repeat::tests::simple_dc", "--exact", "--nocapture"],
             "cwd": "${workspaceFolder}",
             "preLaunchTask": "cargo test build",
         }

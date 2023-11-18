@@ -91,7 +91,7 @@ impl UndoStore {
 mod tests {
     use std::{rc::Rc};
 
-    use crate::{models::Models, note::Note, pitch::Pitch, solfa::Solfa, octave::Octave, sharp_flat::SharpFlat, duration::{Duration, Numerator, Denominator, Dots}, velocity::Velocity, trimmer::{Trimmer, RateTrimmer}, bar::{Bar, DcFine, EndOrRegion, RepeatStart}, undo::{UndoStore, Undo}, project::ModelChangeMetadata};
+    use crate::{models::Models, note::Note, pitch::Pitch, solfa::Solfa, octave::Octave, sharp_flat::SharpFlat, duration::{Duration, Numerator, Denominator, Dots}, velocity::Velocity, trimmer::{Trimmer, RateTrimmer}, bar::{Bar, RepeatSet, Repeat}, undo::{UndoStore, Undo}, project::ModelChangeMetadata};
     
     fn test_models() -> [Models; 5] {
         let note0 = Rc::new(
@@ -147,45 +147,18 @@ mod tests {
             )
         );
 
-        let bar0 = Bar::new(
-            123,
-            None,
-            None,
-            DcFine::Null,
-            EndOrRegion::Null,
-            RepeatStart::Null
-        );
+        let bar0 = Bar::new(123, None, None, RepeatSet::EMPTY);
         let bar1 = Bar::new(
-            234,
-            None,
-            None,
-            DcFine::Dc,
-            EndOrRegion::Null,
-            RepeatStart::Null
+            234, None, None, RepeatSet::EMPTY.try_add(Repeat::Dc).unwrap()
         );
         let bar2 = Bar::new(
-            345,
-            None,
-            None,
-            DcFine::Null,
-            EndOrRegion::RepeatEnd,
-            RepeatStart::Null
+            345, None, None, RepeatSet::EMPTY.try_add(Repeat::End).unwrap()
         );
         let bar3 = Bar::new(
-            456,
-            None,
-            None,
-            DcFine::Null,
-            EndOrRegion::Null,
-            RepeatStart::Start
+            456, None, None, RepeatSet::EMPTY.try_add(Repeat::Start).unwrap()
         );
         let bar4 = Bar::new(
-            567,
-            None,
-            None,
-            DcFine::Null,
-            EndOrRegion::Null,
-            RepeatStart::Start
+            567, None, None, RepeatSet::EMPTY.try_add(Repeat::Start).unwrap(),
         );
 
         [

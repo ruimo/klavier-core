@@ -21,6 +21,7 @@ gcd = "2.1.0"
 serdo = { version = "0.1.4-beta.7", features = ["persistence"] }
 bincode = "1"
 error-stack = "0.3"
+enumset = { version = "1.1.3", features = ["serde"] }
 
 [dev-dependencies]
 tempfile = "3.3.0"

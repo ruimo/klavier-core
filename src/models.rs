@@ -208,7 +208,7 @@ impl ModelChanges {
 
 #[cfg(test)]
 mod clipboard_tests {
-    use crate::{models::{Models, FromClipboardTextErr}, note::Note, pitch::Pitch, solfa::Solfa, octave::Octave, sharp_flat::SharpFlat, duration::{self, Duration, Dots}, velocity::Velocity, trimmer::{Trimmer, RateTrimmer}, bar::{Bar, DcFine, EndOrRegion, RepeatStart}, tempo::Tempo, ctrl_chg::CtrlChg};
+    use crate::{models::{Models, FromClipboardTextErr}, note::Note, pitch::Pitch, solfa::Solfa, octave::Octave, sharp_flat::SharpFlat, duration::{self, Duration, Dots}, velocity::Velocity, trimmer::{Trimmer, RateTrimmer}, bar::{Bar, RepeatSet}, tempo::Tempo, ctrl_chg::CtrlChg};
 
     #[test]
     fn parse_empty() {
@@ -251,9 +251,7 @@ mod clipboard_tests {
             100,
             None,
             None,
-            DcFine::Null,
-            EndOrRegion::Null,
-            RepeatStart::Null
+            RepeatSet::EMPTY,
         );
 
         let models = Models {
@@ -279,7 +277,7 @@ mod clipboard_tests {
 
         let bar = Bar::new(
             110,
-            None, None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null
+            None, None, RepeatSet::EMPTY
         );
 
         let tempo0 = Tempo::new(110, 200);

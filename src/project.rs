@@ -6,7 +6,7 @@ use serde::{Serialize, Deserialize};
 use serdo::undo_store::{SqliteUndoStore, UndoStore};
 use serdo::cmd::{SerializableCmd, Cmd};
 
-use crate::bar::{Bar, DcFine, EndOrRegion, RepeatStart};
+use crate::bar::{Bar, RepeatSet};
 use crate::ctrl_chg::CtrlChg;
 use crate::grid::Grid;
 use crate::key::Key;
@@ -335,7 +335,7 @@ impl ProjectImpl {
         let bar_tick_len = self.rhythm_at(bar_tick).tick_len();
         while bar_tick < max_end_tick {
             bar_tick += bar_tick_len;
-            let bar = Bar::new(bar_tick, None, None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null);
+            let bar = Bar::new(bar_tick, None, None, RepeatSet::EMPTY);
             self.add_bar_internal(bar, false);
             replenished_bars.push(bar);
         }
@@ -889,7 +889,7 @@ mod tests {
     use std::rc::Rc;
     use klavier_helper::store::Store;
     use serdo::undo_store::{SqliteUndoStore, UndoStore};
-    use crate::{tempo::{Tempo, TempoValue}, project::{tempo_at, ProjectCmd, ProjectCmdErr, ModelChangeMetadata, ProjectStore, LocationError}, note::Note, solfa::Solfa, octave::Octave, sharp_flat::SharpFlat, pitch::Pitch, duration::{Duration, Numerator, Denominator, Dots}, velocity::Velocity, trimmer::{Trimmer, RateTrimmer}, bar::{Bar, DcFine, EndOrRegion, RepeatStart}, location::Location, rhythm::Rhythm, ctrl_chg::CtrlChg, key::Key, grid::Grid, models::{Models, ModelChanges}};
+    use crate::{tempo::{Tempo, TempoValue}, project::{tempo_at, ProjectCmd, ProjectCmdErr, ModelChangeMetadata, ProjectStore, LocationError}, note::Note, solfa::Solfa, octave::Octave, sharp_flat::SharpFlat, pitch::Pitch, duration::{Duration, Numerator, Denominator, Dots}, velocity::Velocity, trimmer::{Trimmer, RateTrimmer}, bar::{Bar, RepeatSet}, location::Location, rhythm::Rhythm, ctrl_chg::CtrlChg, key::Key, grid::Grid, models::{Models, ModelChanges}};
     use super::{DEFAULT_TEMPO, ProjectImpl};
 
     #[test]
@@ -947,9 +947,7 @@ mod tests {
             100,
             None,
             None,
-            DcFine::Null,
-            EndOrRegion::Null,
-            RepeatStart::Null
+            RepeatSet::EMPTY,
         );
         store.add_bar(bar, false);
         assert_eq!(store.model().bar_repo().len(), 1);
@@ -973,8 +971,7 @@ mod tests {
         );
         
         let bar0 = Bar::new(
-            100, None,
-            None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null
+            100, None, None, RepeatSet::EMPTY
         );
         store.add_bar(bar0, false);
         
@@ -989,8 +986,7 @@ mod tests {
         assert_eq!(store.model().location_to_tick(Location::new(2, 1)).unwrap(), 100 + store.model().rhythm().tick_len() + 1);
         
         let bar1 = Bar::new(
-            1000, None,
-            None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null
+            1000, None, None, RepeatSet::EMPTY
         );
         store.add_bar(bar1, false);
         
@@ -1000,14 +996,12 @@ mod tests {
         assert_eq!(store.model().location_to_tick(Location::new(2, 0)).unwrap(), 1000);
 
         let bar2 = Bar::new(
-            2000, Some(Rhythm::new(2, 4)),
-            None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null
+            2000, Some(Rhythm::new(2, 4)), None, RepeatSet::EMPTY
         );
         store.add_bar(bar2, false);
 
         let bar3 = Bar::new(
-            3000, None,
-            None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null
+            3000, None, None, RepeatSet::EMPTY
         );
         store.add_bar(bar3, false);
 
@@ -1029,12 +1023,7 @@ mod tests {
         assert_eq!(store.model().tick_to_location(u32::MAX), Location::new(0, u32::MAX as usize));
         
         let bar = Bar::new(
-            100,
-            None,
-            None,
-            DcFine::Null,
-            EndOrRegion::Null,
-            RepeatStart::Null
+            100, None, None, RepeatSet::EMPTY
         );
         store.add_bar(bar, false);
         
@@ -1044,12 +1033,7 @@ mod tests {
         assert_eq!(store.model().tick_to_location(u32::MAX), Location::new(1, (u32::MAX - 100) as usize));
         
         let bar = Bar::new(
-            1000,
-            None,
-            None,
-            DcFine::Null,
-            EndOrRegion::Null,
-            RepeatStart::Null
+            1000, None, None, RepeatSet::EMPTY,
         );
         store.add_bar(bar, false);
         
@@ -1072,10 +1056,7 @@ mod tests {
         assert_eq!(store.model().rhythm_at(500), Rhythm::new(6, 8));
         assert_eq!(store.model().rhythm_at(0), Rhythm::new(6, 8));
         
-        let bar0 = Bar::new(
-            100, None,
-            None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null
-        );
+        let bar0 = Bar::new(100, None, None, RepeatSet::EMPTY);
         store.add_bar(bar0, false);
         assert_eq!(store.model().last_bar().map(|(_, bar)| bar), Some(bar0));
         
@@ -1085,22 +1066,17 @@ mod tests {
         assert_eq!(store.model().rhythm_at(101), Rhythm::new(6, 8));
         
         let bar1 = Bar::new(
-            200, Some(Rhythm::new(3, 4)),
-            None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null
+            200, Some(Rhythm::new(3, 4)), None, RepeatSet::EMPTY
         );
         store.add_bar(bar1, false);
         assert_eq!(store.model().last_bar().map(|(_, bar)| bar), Some(bar1));
         
-        let bar2 = Bar::new(
-            300, None,
-            None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null
-        );
+        let bar2 = Bar::new(300, None, None, RepeatSet::EMPTY);
         store.add_bar(bar2, false);
         assert_eq!(store.model().last_bar().map(|(_, bar)| bar), Some(bar2));
         
         let bar3 = Bar::new(
-            400, Some(Rhythm::new(4, 4)),
-            None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null
+            400, Some(Rhythm::new(4, 4)), None, RepeatSet::EMPTY
         );
         store.add_bar(bar3, false);
         assert_eq!(store.model().last_bar().map(|(_, bar)| bar), Some(bar3));
@@ -1441,8 +1417,7 @@ mod tests {
         let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), None).unwrap();
         
         let bar0 = Bar::new(
-            1000, Some(Rhythm::new(3, 4)),
-            None, DcFine::Null, EndOrRegion::Null, RepeatStart::Null
+            1000, Some(Rhythm::new(3, 4)), None, RepeatSet::EMPTY
         );
         
         store.add_bar(bar0, false);
