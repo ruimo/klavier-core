@@ -9,7 +9,7 @@
             "type": "lldb",
             "request": "launch",
             "program": "${workspaceFolder}/target/debug/deps/klavier_core-a1331bcf2dffc6d0",
-            "args": ["repeat::tests::simple_dc", "--exact", "--nocapture"],
+            "args": ["repeat::tests::dc_and_repeat", "--exact", "--nocapture"],
             "cwd": "${workspaceFolder}",
             "preLaunchTask": "cargo test build",
         }

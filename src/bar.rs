@@ -191,10 +191,6 @@ impl RepeatSet {
         copy
     }
 
-    pub fn has_end_or_region(self) -> bool {
-        self.contains(Repeat::End) || self.region_index() != None
-    }
-
     pub fn len(self) -> usize {
         self.value.len()
     }
