@@ -212,7 +212,6 @@ impl Region for DsRegion {
 
 #[derive(Debug)]
 enum RenderRegionState {
-  Init,
   Idle,
   Seq { start_tick: u32 },
   RepeatStart { start_tick: u32 },
@@ -353,8 +352,8 @@ fn render_region(start_rhythm: Rhythm, bars: Iter<Bar>) -> Result<Box<dyn Region
   }
 
   let mut regions: Vec<Box<dyn SimpleRegion>> = vec![];
-  let mut state = RenderRegionState::Init;
-  let mut is_auftakt = false;
+  let mut state = RenderRegionState::Idle;
+  let mut is_auftakt: Option<bool> = None;
   let mut fine_segno: FineSegno = FineSegno::Nothing;
 
   for bar in bars {
@@ -409,31 +408,6 @@ fn render_region(start_rhythm: Rhythm, bars: Iter<Bar>) -> Result<Box<dyn Region
     fine_segno = fine_segno.on_bar(&bar)?;
 
     state = match &state {
-      RenderRegionState::Init => {
-        is_auftakt = bar.start_tick != start_rhythm.tick_len();
-  
-        if bar.repeats.contains(Repeat::Dc) || bar.repeats.contains(Repeat::Ds) {
-          return Err(RenderRegionError::NoFine { dc_or_ds_tick_pos: bar.base_start_tick() });
-        }
-
-        if bar.repeats.contains(Repeat::Start) && bar.repeats.contains(Repeat::End) {
-          regions.push(Box::new(RepeatRegion { region: SequenceRegion { start_tick: 0, end_tick: bar.base_start_tick() }}));
-          RenderRegionState::RepeatStart { start_tick: bar.base_start_tick() }
-        } else if bar.repeats.contains(Repeat::End) {
-          regions.push(Box::new(RepeatRegion { region: SequenceRegion { start_tick: 0, end_tick: bar.base_start_tick() }}));
-          RenderRegionState::Seq { start_tick: bar.base_start_tick() }
-        } else if bar.repeats.contains(Repeat::Start) {
-          regions.push(Box::new(SequenceRegion { start_tick: 0, end_tick: bar.base_start_tick() }));
-          RenderRegionState::RepeatStart { start_tick: bar.base_start_tick() }
-        } else if let Some(idx) = bar.repeats.region_index() {
-          if idx != VarIndex::VI1 {
-            return Err(RenderRegionError::InvalidRegionIndex { tick_pos: bar.base_start_tick(), actual: idx, expected: VarIndex::VI1 });
-          }
-          RenderRegionState::Variation { start_tick: 0, region_start_ticks: vec![bar.base_start_tick()] }
-        } else {
-          RenderRegionState::Idle
-        }
-      },
       RenderRegionState::Idle => {
         if bar.repeats.contains(Repeat::Dc) {
           return on_dc(bar, regions, fine_segno);
@@ -544,7 +518,6 @@ fn render_region(start_rhythm: Rhythm, bars: Iter<Bar>) -> Result<Box<dyn Region
   }
 
   match state {
-    RenderRegionState::Init => Ok(Box::new(NullRegion)),
     RenderRegionState::Idle => Ok(Box::new(SequenceRegion { start_tick: 0, end_tick: u32::MAX })),
     RenderRegionState::Seq { start_tick } => if start_tick == 0 {
       Ok(Box::new(SequenceRegion { start_tick: 0, end_tick: u32::MAX }))
@@ -569,7 +542,9 @@ use super::FineSegno;
   #[test]
   fn empty() {
     let bars: Vec<Bar> = vec![];
-    assert_eq!(render_region(Rhythm::new(4, 4), bars.iter()).unwrap().to_chunks().len(), 0);
+    let chunks = render_region(Rhythm::new(4, 4), bars.iter()).unwrap().to_chunks();
+    assert_eq!(chunks.len(), 1);
+    assert_eq!(chunks[0], Chunk::new(0, u32::MAX));
   }
 
   // 0    100
