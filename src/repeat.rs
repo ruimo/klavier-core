@@ -357,7 +357,9 @@ fn render_region(start_rhythm: Rhythm, bars: Iter<Bar>) -> Result<Box<dyn Region
   let mut fine_segno: FineSegno = FineSegno::Nothing;
 
   for bar in bars {
-    fn on_dc(bar: &Bar, regions: Vec<Box<dyn SimpleRegion>>, fine_segno: FineSegno) -> Result<Box<dyn Region>, RenderRegionError> {
+    fn on_dc(
+      bar: &Bar, regions: Vec<Box<dyn SimpleRegion>>, fine_segno: FineSegno, is_auftakt: bool
+    ) -> Result<Box<dyn Region>, RenderRegionError> {
       if bar.repeats.contains(Repeat::Start) || bar.repeats.region_index() != None {
         return Err(RenderRegionError::RepeatOrVariationOnDc { tick_pos: bar.base_start_tick() });
       }
@@ -381,7 +383,9 @@ fn render_region(start_rhythm: Rhythm, bars: Iter<Bar>) -> Result<Box<dyn Region
       }
     }
 
-    fn on_ds(bar: &Bar, regions: Vec<Box<dyn SimpleRegion>>, fine_segno: FineSegno) -> Result<Box<dyn Region>, RenderRegionError> {
+    fn on_ds(
+      bar: &Bar, regions: Vec<Box<dyn SimpleRegion>>, fine_segno: FineSegno, is_auftakt: bool
+    ) -> Result<Box<dyn Region>, RenderRegionError> {
       if bar.repeats.contains(Repeat::Start) || bar.repeats.region_index() != None {
         return Err(RenderRegionError::RepeatOrVariationOnDs { tick_pos: bar.base_start_tick() });
       }
@@ -406,13 +410,18 @@ fn render_region(start_rhythm: Rhythm, bars: Iter<Bar>) -> Result<Box<dyn Region
     }
 
     fine_segno = fine_segno.on_bar(&bar)?;
+    if is_auftakt.is_none() {
+      if bar.base_start_tick() != 0 {
+        is_auftakt = Some(bar.base_start_tick() < start_rhythm.tick_len())
+      }
+    }
 
     state = match &state {
       RenderRegionState::Idle => {
         if bar.repeats.contains(Repeat::Dc) {
-          return on_dc(bar, regions, fine_segno);
+          return on_dc(bar, regions, fine_segno, is_auftakt.unwrap_or(false));
         } else if bar.repeats.contains(Repeat::Ds) {
-          return on_ds(bar, regions, fine_segno);
+          return on_ds(bar, regions, fine_segno, is_auftakt.unwrap_or(false));
         }
 
         if bar.repeats.contains(Repeat::Start) && bar.repeats.contains(Repeat::End) {
@@ -438,10 +447,10 @@ fn render_region(start_rhythm: Rhythm, bars: Iter<Bar>) -> Result<Box<dyn Region
           return Err(RenderRegionError::OrphanRepeatEnd{ tick_pos: bar.base_start_tick() });
         } else if bar.repeats.contains(Repeat::Dc) {
           regions.push(Box::new(SequenceRegion { start_tick: *start_tick, end_tick: bar.base_start_tick() }));
-          return on_dc(bar, regions, fine_segno);
+          return on_dc(bar, regions, fine_segno, is_auftakt.unwrap_or(false));
         } else if bar.repeats.contains(Repeat::Ds) {
           regions.push(Box::new(SequenceRegion { start_tick: *start_tick, end_tick: bar.base_start_tick() }));
-          return on_ds(bar, regions, fine_segno);
+          return on_ds(bar, regions, fine_segno, is_auftakt.unwrap_or(false));
         } else if bar.repeats.contains(Repeat::Start) {
           regions.push(Box::new(SequenceRegion { start_tick: *start_tick, end_tick: bar.base_start_tick() }));
           RenderRegionState::RepeatStart { start_tick: bar.base_start_tick() }
@@ -461,9 +470,9 @@ fn render_region(start_rhythm: Rhythm, bars: Iter<Bar>) -> Result<Box<dyn Region
         } else if bar.repeats.contains(Repeat::End) {
           regions.push(Box::new(RepeatRegion { region: SequenceRegion { start_tick: *start_tick, end_tick: bar.base_start_tick() }}));
           if bar.repeats.contains(Repeat::Dc) {
-            return on_dc(bar, regions, fine_segno);
+            return on_dc(bar, regions, fine_segno, is_auftakt.unwrap_or(false));
           } else if bar.repeats.contains(Repeat::Ds) {
-            return on_ds(bar, regions, fine_segno);
+            return on_ds(bar, regions, fine_segno, is_auftakt.unwrap_or(false));
           } else {
             RenderRegionState::Seq { start_tick: bar.base_start_tick() }
           }
@@ -506,9 +515,9 @@ fn render_region(start_rhythm: Rhythm, bars: Iter<Bar>) -> Result<Box<dyn Region
           if bar.repeats.contains(Repeat::Start) {
             RenderRegionState::RepeatStart { start_tick: bar.base_start_tick() }
           } else if bar.repeats.contains(Repeat::Ds) {
-            return on_ds(&bar, regions, fine_segno);
+            return on_ds(&bar, regions, fine_segno, is_auftakt.unwrap_or(false));
           } else if bar.repeats.contains(Repeat::Dc) {
-            return on_dc(&bar, regions, fine_segno);
+            return on_dc(&bar, regions, fine_segno, is_auftakt.unwrap_or(false));
           } else {
             RenderRegionState::Seq { start_tick: bar.base_start_tick() }
           }
@@ -536,8 +545,7 @@ fn render_region(start_rhythm: Rhythm, bars: Iter<Bar>) -> Result<Box<dyn Region
 mod tests {
   use crate::{repeat::{render_region, Chunk, RenderRegionError}, rhythm::Rhythm, bar::{Bar, RepeatSet, Repeat}};
   use crate::repeat_set;
-
-use super::FineSegno;
+  use super::FineSegno;
 
   #[test]
   fn empty() {
