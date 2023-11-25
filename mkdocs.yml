@@ -1,0 +1,32 @@
+# Need:
+# pip install pymdown-extensions
+# pip install mkdocs-material
+
+site_name: Klaview core module
+
+nav:
+  - Home: 'index.md'
+  - 'Repeat':
+    - Structure: 'repeat/structure.md'
+    - Playing order: 'repeat/order.md'
+    - Examples: 'repeat/examples.md'
+
+theme:
+  language: ja
+  name: material
+  palette:
+    scheme: slate
+
+markdown_extensions:
+  - md_in_html
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_div_format
+
+extra_javascript:
+  - https://unpkg.com/mermaid@10.6.1/dist/mermaid.min.js
+
+extra_css:
+  - /my.css
