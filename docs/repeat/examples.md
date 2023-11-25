@@ -50,12 +50,12 @@
 
 <figure markdown>
   ![Fig8-1](example08-01.drawio.svg)
-  <figcaption>Fig. Da Capo when auftakt the last bar length is not full length</figcaption>
+  <figcaption>Fig. Da Capo with auftakt in case the last bar length is not full length</figcaption>
 </figure>
 
 <figure markdown>
   ![Fig8-2](example08-02.drawio.svg)
-  <figcaption>Fig. Da Capo when auftakt the last bar length is full length</figcaption>
+  <figcaption>Fig. Da Capo with auftakt in case the last bar length is full length</figcaption>
 </figure>
 
 ## Dal Segno
