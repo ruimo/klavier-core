@@ -16,6 +16,8 @@ theme:
   name: material
   palette:
     scheme: slate
+  features:
+    - navigation.footer
 
 markdown_extensions:
   - md_in_html

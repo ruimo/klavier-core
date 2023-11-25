@@ -1,13 +1,26 @@
 # Abstract
 
-Core library for MIDI sequencer.
+Core library for MIDI sequencer. It does not depend on any GUI frameworks.
 
-# Structre
+# Architecture
 
-This library supports the following structures.
+The following constructs are included.
 
+- Bar
+- Control change
+- Note
+    - Velocity
+    - Duration
+        - Tuple
+    - Pitch
+        - Solfa
+        - Octave
+        - Sharp flat
+    - Trimmer (trim velocity, length, and start tick)
+- Tempo
 - Repeat
-- Repeat with variation
-- Da Capo (D.C.)
-- Dal Segno (D.S.)<br/>Current version does not support Coda.
-
+- Project
+    - Key
+    - Grid (Can snap to the horizontal position)
+    - Rhythm
+- Undo

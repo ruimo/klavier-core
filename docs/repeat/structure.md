@@ -1,5 +1,16 @@
 # Structure
 
+## Supported structure
+
+This library supports the following structures.
+
+- Repeat
+- Repeat with variation
+- Da Capo (D.C.)
+- Dal Segno (D.S.)<br/>Current version does not support Coda.
+
+## Detailed structure
+
 ``` mermaid
 graph LR
   S(( )) --> CR[Compound Region] --> E(( ));
