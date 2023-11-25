@@ -10,5 +10,3 @@ This library supports the following structures.
 - Repeat with variation
 - Da Capo (D.C.)
 - Dal Segno (D.S.)<br/>Current version does not support Coda.
-
-<a href="/my.css" style="display:none></a>
