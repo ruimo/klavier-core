@@ -2,7 +2,7 @@
 # pip install pymdown-extensions
 # pip install mkdocs-material
 
-site_name: Klaview core module
+site_name: Klavier core module
 
 nav:
   - Home: 'index.md'
