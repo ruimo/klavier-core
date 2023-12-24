@@ -58,9 +58,24 @@
   <figcaption>Fig. Da Capo when auftakt the last bar length is full length</figcaption>
 </figure>
 
+<figure markdown>
+  ![Fig8-3](example08-03.drawio.svg)
+  <figcaption>Fig. Da Capo without Fine</figcaption>
+</figure>
+
+<figure markdown>
+  ![Fig8-4](example08-04.drawio.svg)
+  <figcaption>Fig. Da Capo with Coda without Fine</figcaption>
+</figure>
+
 ## Dal Segno
 
 <figure markdown>
   ![Fig9](example09.drawio.svg)
   <figcaption>Fig. Dal Segno</figcaption>
+</figure>
+
+<figure markdown>
+  ![Fig9-1](example09-01.drawio.svg)
+  <figcaption>Fig. Dal Segno with Coda and Fine</figcaption>
 </figure>

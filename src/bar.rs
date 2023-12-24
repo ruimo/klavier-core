@@ -68,6 +68,7 @@ pub enum Repeat {
     Fine,
     Ds,
     Segno,
+    Coda,
     Var1,
     Var2,
     Var3,
@@ -83,6 +84,7 @@ impl fmt::Display for Repeat {
             Repeat::Fine => "Fine",
             Repeat::Ds => "D.S.",
             Repeat::Segno => "Segno",
+            Repeat::Coda => "Coda",
             Repeat::Var1 => "Var1",
             Repeat::Var2 => "Var2",
             Repeat::Var3 => "Var3",
@@ -161,6 +163,7 @@ impl RepeatSet {
             Repeat::Fine => self.try_add_repeat(EnumSet::empty(), r),
             Repeat::Ds => self.try_add_repeat(Self::DS_DISLIKE, r),
             Repeat::Segno => self.try_add_repeat(EnumSet::empty(), r),
+            Repeat::Coda => self.try_add_repeat(EnumSet::empty(), r),
             Repeat::Var1 => self.try_add_repeat(Self::REGION1_DISLIKE, r),
             Repeat::Var2 => self.try_add_repeat(Self::REGION2_DISLIKE, r),
             Repeat::Var3 => self.try_add_repeat(Self::REGION3_DISLIKE, r),
@@ -312,14 +315,14 @@ mod tests {
         let json: Value = serde_json::from_str(&json_str).unwrap();
         assert_eq!(
             json,
-            json!({ "value": 64 })
+            json!({ "value": 128 })
         );
     }
 
     #[test]
     fn can_deserialize_end_or_region() {
         let repeats: RepeatSet = serde_json::from_str(r#"{ "value": 64 } "#).unwrap();
-        assert_eq!(repeats, repeat_set!(Repeat::Var1));
+        assert_eq!(repeats, repeat_set!(Repeat::Coda));
     }
 
     #[test]

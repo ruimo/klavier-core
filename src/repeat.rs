@@ -1,6 +1,9 @@
-use std::slice::Iter;
-
-use crate::{bar::{Bar, VarIndex, Repeat}, rhythm::Rhythm, have_start_tick::HaveBaseStartTick};
+use std::{slice::Iter, ops::Range, fmt::Display};
+use error_stack::{Report, Context, report};
+use gcollections::ops::{Intersection, Union, Bounded};
+use interval::{IntervalSet, interval_set::ToIntervalSet};
+use error_stack::Result;
+use crate::{bar::{Bar, VarIndex, Repeat}, rhythm::Rhythm, have_start_tick::HaveBaseStartTick, global_repeat::{GlobalRepeat, RenderRegionWarning, GlobalRepeatBuilder}};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Chunk {
@@ -18,12 +21,29 @@ impl Chunk {
 
 trait Region: std::fmt::Debug {
   fn to_chunks(&self) -> Vec<Chunk>;
+  fn to_iter1_interval_set(&self) -> IntervalSet<u32>;
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum RenderPhase {
+  NonDcDs,
+  DcDsIter0 { dc_ds_tick: u32 },
+  DcDsIter1(GlobalRepeat),
 }
 
 // SimpleRegion can be stored in a compound region.
 // D.C. Region is not a SimpleRegion.
 trait SimpleRegion: Region {
-  fn render_chunks(&self, from_segno: Option<u32>, to_fine: Option<u32>) -> Vec<Chunk>;
+  fn render_chunks(&self, phase: &RenderPhase) -> Vec<Chunk>;
+  fn to_iter1_chunks(&self, global_repeat: &GlobalRepeat) -> Vec<Chunk> {
+    let sections = global_repeat.iter1_interval_set().clone().intersection(
+      &self.to_iter1_interval_set()
+    );
+
+    sections.into_iter().map(|sec| {
+      Chunk::new(sec.lower(), sec.upper() + 1)
+    }).collect()
+  }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -33,67 +53,68 @@ impl Region for NullRegion {
   fn to_chunks(&self) -> Vec<Chunk> {
     vec![]
   }
+
+  fn to_iter1_interval_set(&self) -> IntervalSet<u32> {
+    vec![].to_interval_set()
+  }
 }
 
 impl SimpleRegion for NullRegion {
-  fn render_chunks(&self, from_segno: Option<u32>, to_fine: Option<u32>) -> Vec<Chunk> {
+  fn render_chunks(&self, phase: &RenderPhase) -> Vec<Chunk> {
     vec![]
   }
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct SequenceRegion {
-  start_tick: u32,
-  end_tick: u32,
+  tick_range: Range<u32>,
 }
 
 impl SequenceRegion {
+  #[inline]
   fn tick_len(&self) -> u32 {
-    self.end_tick - self.start_tick
+    self.tick_range.len() as u32
+  }
+
+  #[inline]
+  fn start_tick(&self) -> u32 {
+    self.tick_range.start
+  }
+
+  // Exclusive
+  #[inline]
+  fn end_tick(&self) -> u32 {
+    self.tick_range.end
   }
 }
 
 impl Region for SequenceRegion {
   fn to_chunks(&self) -> Vec<Chunk> {
-    self.render_chunks(None, None)
+    self.render_chunks(&RenderPhase::NonDcDs)
+  }
+
+  fn to_iter1_interval_set(&self) -> IntervalSet<u32> {
+    (self.tick_range.start, self.tick_range.end - 1).to_interval_set()
   }
 }
 
 impl SimpleRegion for SequenceRegion {
-  fn render_chunks(&self, from_segno: Option<u32>, to_fine: Option<u32>) -> Vec<Chunk> {
-    let start_pos: Option<u32> = match from_segno {
-      None =>
-        Some(self.start_tick),
-      Some(segno_pos) =>
-        if segno_pos <= self.start_tick {
-          Some(self.start_tick)
-        } else if segno_pos < self.end_tick {
-          Some(segno_pos)
+  fn render_chunks(&self, phase: &RenderPhase) -> Vec<Chunk> {
+    match phase {
+      RenderPhase::NonDcDs => vec![Chunk { start_tick: self.start_tick(), end_tick: self.end_tick() }],
+      RenderPhase::DcDsIter0 { dc_ds_tick } => {
+        if self.end_tick() <= *dc_ds_tick {
+          vec![Chunk::new(self.start_tick(), self.end_tick())]
+        } else if self.start_tick() < *dc_ds_tick && *dc_ds_tick < self.end_tick() {
+          vec![Chunk::new(self.start_tick(), *dc_ds_tick)]
         } else {
-          None
+          vec![]
         }
-    };
-    if start_pos.is_none() {
-      return vec![]
+      }
+      RenderPhase::DcDsIter1(global_repeat) => {
+        self.to_iter1_chunks(global_repeat)
+      }
     }
-
-    let end_pos: Option<u32> = match to_fine {
-      None =>
-        Some(self.end_tick),
-      Some(fine_pos) =>
-        if fine_pos <= self.start_tick {
-          None
-        } else if fine_pos < self.end_tick {
-          Some(fine_pos)
-        } else {
-          Some(self.end_tick)
-        }
-    };
-    if end_pos.is_none() {
-      return vec![]
-    }
-
-    vec![Chunk::new(start_pos.unwrap(), end_pos.unwrap())]
   }
 }
 
@@ -104,20 +125,39 @@ pub struct RepeatRegion {
 
 impl Region for RepeatRegion {
   fn to_chunks(&self) -> Vec<Chunk> {
-    self.render_chunks(None, None)
+    self.render_chunks(&RenderPhase::NonDcDs)
+  }
+
+  fn to_iter1_interval_set(&self) -> IntervalSet<u32> {
+    (self.region.start_tick(), self.region.end_tick() - 1).to_interval_set()
   }
 }
 
 impl SimpleRegion for RepeatRegion {
-  fn render_chunks(&self, from_segno: Option<u32>, to_fine: Option<u32>) -> Vec<Chunk> {
-    let chunk = self.region.render_chunks(from_segno, to_fine);
-    let mut ret: Vec<Chunk> = Vec::with_capacity(chunk.len());
-    ret.extend(chunk.clone());
-    if to_fine == None {
-      ret.extend(chunk);
+  fn render_chunks(&self, phase: &RenderPhase) -> Vec<Chunk> {
+    fn full(sr: &RepeatRegion) -> Vec<Chunk> {
+      let mut chunks = Vec::with_capacity(2);
+      chunks.extend(sr.region.to_chunks());
+      chunks.extend(sr.region.to_chunks());
+      chunks
     }
 
-    ret
+    match phase {
+        RenderPhase::NonDcDs => full(&self),
+        RenderPhase::DcDsIter0 { dc_ds_tick } => {
+          if self.region.end_tick() <= *dc_ds_tick {
+            full(&self)
+          } else if self.region.end_tick() < *dc_ds_tick && *dc_ds_tick < self.region.end_tick() {
+            // This condition should not occur.
+            panic!("Logic error.");
+          } else {
+            vec![]
+          }
+        },
+        RenderPhase::DcDsIter1(global_repeat) => {
+          self.to_iter1_chunks(global_repeat)
+        }
+    }
   }
 }
 
@@ -127,88 +167,101 @@ pub struct VariationRegion {
   variations: Vec<SequenceRegion>,
 }
 
-impl Region for VariationRegion {
-  fn to_chunks(&self) -> Vec<Chunk> {
-    self.render_chunks(None, None)
+impl VariationRegion {
+  fn end_tick(&self) -> u32 {
+    self.variations.last().unwrap().end_tick()
   }
 }
 
-impl SimpleRegion for VariationRegion {
-  fn render_chunks(&self, from_segno: Option<u32>, to_fine: Option<u32>) -> Vec<Chunk> {
-    let mut ret: Vec<Chunk> = Vec::with_capacity(self.variations.len() * 2);
+impl VariationRegion {
+  fn last_variation(&self) -> &SequenceRegion {
+    &self.variations[self.variations.len() - 1]
+  }
+}
 
-    match to_fine {
-      None => {
-        for v in self.variations.iter() {
-          ret.extend(self.common.render_chunks(from_segno, to_fine));
-          ret.extend(v.render_chunks(from_segno, to_fine));
-        }
+impl Region for VariationRegion {
+  fn to_chunks(&self) -> Vec<Chunk> {
+    self.render_chunks(&RenderPhase::NonDcDs)
+  }
+
+  fn to_iter1_interval_set(&self) -> IntervalSet<u32> {
+    self.common.to_iter1_interval_set().union(
+      &self.last_variation().to_iter1_interval_set()
+    )
+  }
+}
+
+
+impl SimpleRegion for VariationRegion {
+  fn render_chunks(&self, phase: &RenderPhase) -> Vec<Chunk> {
+    fn full(vr: &VariationRegion) -> Vec<Chunk> {
+      let mut chunks = vec![];
+      let common = vr.common.to_chunks();
+      for v in vr.variations.iter() {
+        chunks.extend(common.clone());
+        chunks.extend(v.to_chunks());
       }
-      Some(_) => {
-        ret.extend(self.common.render_chunks(from_segno, to_fine));
-        for v in self.variations.last().iter() {
-          ret.extend(v.render_chunks(from_segno, to_fine));
-        }
-      }
+
+      chunks
     }
-    ret
+
+    match phase {
+        RenderPhase::NonDcDs => full(&self),
+        RenderPhase::DcDsIter0 { dc_ds_tick } => {
+          if *dc_ds_tick <= self.common.start_tick() {
+            vec![]
+          } else if *dc_ds_tick < self.end_tick() {
+            // This condition should not occur.
+            panic!("Logic error");
+          } else {
+            full(&self)
+          }
+        },
+        RenderPhase::DcDsIter1(global_repeat) => {
+          self.to_iter1_chunks(global_repeat)
+        }
+    }
   }
 }
 
 #[derive(Debug)]
 pub struct CompoundRegion {
+  global_repeat: Option<GlobalRepeat>,
   regions: Vec<Box<dyn SimpleRegion>>,
 }
 
 impl Region for CompoundRegion {
   fn to_chunks(&self) -> Vec<Chunk> {
-    self.render_chunks(None, None)
+    match self.global_repeat.as_ref() {
+        Some(gr) => {
+          let mut chunks = vec![];
+          chunks.extend(self.render_chunks(&RenderPhase::DcDsIter0 { dc_ds_tick: gr.ds_dc().tick() }));
+          chunks.extend(self.render_chunks(&RenderPhase::DcDsIter1(gr.clone())));
+          chunks
+        }
+        None => self.render_chunks(&RenderPhase::NonDcDs)
+    }
+  }
+
+  fn to_iter1_interval_set(&self) -> IntervalSet<u32> {
+    let union = self.regions.iter().fold(
+      vec![].to_interval_set(),
+      |u, e| u.union(&e.to_iter1_interval_set())
+    );
+    
+    self.global_repeat.as_ref().map(|gr| union.intersection(gr.iter1_interval_set())).unwrap_or(union)
   }
 }
 
 impl SimpleRegion for CompoundRegion {
-  fn render_chunks(&self, from_segno: Option<u32>, to_fine: Option<u32>) -> Vec<Chunk> {
+  fn render_chunks(&self, phase: &RenderPhase) -> Vec<Chunk> {
     let mut buf: Vec<Chunk> = vec![];
     for r in self.regions.iter() {
-      buf.extend(r.render_chunks(from_segno, to_fine));
+      buf.extend(r.render_chunks(phase));
     }
     buf
   }
 }
-
-#[derive(Debug)]
-pub struct DcRegion {
-  body: Box<dyn SimpleRegion>,
-  fine_tick_pos: u32,
-}
-
-impl Region for DcRegion {
-  fn to_chunks(&self) -> Vec<Chunk> {
-    let mut ret = vec![];
-    ret.extend(self.body.render_chunks(None, None));
-    ret.extend(self.body.render_chunks(None, Some(self.fine_tick_pos)));
-
-    ret
-  }
-}
-
-#[derive(Debug)]
-pub struct DsRegion {
-  body: Box<dyn SimpleRegion>,
-  segno_tick_pos: u32, 
-  fine_tick_pos: u32,
-}
-
-impl Region for DsRegion {
-  fn to_chunks(&self) -> Vec<Chunk> {
-    let mut ret = vec![];
-    ret.extend(self.body.render_chunks(None, None));
-    ret.extend(self.body.render_chunks(Some(self.segno_tick_pos), Some(self.fine_tick_pos)));
-
-    ret
-  }
-}
-
 
 #[derive(Debug)]
 enum RenderRegionState {
@@ -221,221 +274,84 @@ enum RenderRegionState {
   },
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum RenderRegionError {
-  OrphanRepeatEnd { tick_pos: u32 },
-  DuplicatedRepeatStart { tick_pos: u32 },
-  NoRepeatEnd { tick_pos: u32 },
-  InvalidRegionIndex { tick_pos: u32, actual: VarIndex, expected: VarIndex },
-  RepeatInVariation { tick_pos: u32 },
-  VariationNotClosed { tick_pos: u32 },
-  DuplicatedFine { tick_pos: [u32; 2] },
-  NoFine { dc_or_ds_tick_pos: u32 },
-  RepeatOrVariationOnDc { tick_pos: u32 },
-  RepeatOrVariationOnDs { tick_pos: u32 },
-  DuplicatedSegno { tick_pos: [u32; 2] },
-  FineNotAfterSegno { segno_pos: u32, fine_pos: u32 },
-  SegnoAndDcFound { segno_pos: u32, dc_pos: u32 },
-  NoSegnoForDs { ds_pos: u32 },
+  DuplicatedRepeatStart { tick: u32 },
+  DuplicatedSegno { tick: [u32; 2] },
+  DuplicatedDsDc { tick: [u32; 2] },
+  DuplicatedFine { tick: [u32; 2] },
+  OrphanRepeatEnd { tick: u32 },
+  FineWithoutDsDc { tick: u32 },
+  SegnoWithoutDs { tick: u32 },
+  CodaWithoutDsDc { tick: [u32; 2]},
+  NoRepeatEnd { tick: u32 },
+  InvalidRegionIndex { tick: u32, actual: VarIndex, expected: VarIndex },
+  RepeatInVariation { tick: u32 },
+  VariationNotClosed { tick: u32 },
+  RepeatOrVariationOnDc { tick: u32 },
+  RepeatOrVariationOnDs { tick: u32 },
+  FineNotAfterSegno { segno_tick: u32, fine_tick: u32 },
+  NoSegnoForDs { ds_tick: u32 },
+  MoreThanTwoCodas { tick: [u32; 3] },
+  OnlyOneCoda { tick: u32 },
+  DcDsWhileRepeat { tick: u32 },
+  DcDsWhileVariation { tick: u32 },
+  SegnoWhildVariation { tick: u32 },
+  CodaAfterFine { coda_from: u32, coda_to: u32, fine: u32 },
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-enum FineSegno {
-  Nothing,
-  Fine(u32),
-  Segno(u32),
-  Both { fine_pos: u32, segno_pos: u32 },
-}
+impl Context for RenderRegionError {}
 
-impl FineSegno {
-  fn on_bar(self, bar: &Bar) -> Result<Self, RenderRegionError> {
-    let repeats = bar.repeats;
-    let tick = bar.base_start_tick();
-    if repeats.contains(Repeat::Segno) && repeats.contains(Repeat::Fine) {
-      return Err(RenderRegionError::FineNotAfterSegno { segno_pos: tick, fine_pos: tick })
+impl Display for RenderRegionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
     }
-
-    match self {
-      FineSegno::Nothing =>
-        if repeats.contains(Repeat::Segno) {
-          Ok(FineSegno::Segno(tick))
-        } else if repeats.contains(Repeat::Fine) {
-          Ok(FineSegno::Fine(tick))
-        } else {
-          Ok(self)
-        }
-      FineSegno::Fine(fine_pos) =>
-        if repeats.contains(Repeat::Segno) {
-          if fine_pos <= tick {
-            Err(RenderRegionError::FineNotAfterSegno { segno_pos: tick, fine_pos })
-          } else {
-            Ok(FineSegno::Both { fine_pos, segno_pos: tick })
-          }
-        } else if repeats.contains(Repeat::Fine) {
-          Err(RenderRegionError::DuplicatedFine { tick_pos: [fine_pos, tick] })
-        } else {
-          Ok(self)
-        }
-      FineSegno::Segno(segno_pos) =>
-        if repeats.contains(Repeat::Segno) {
-          Err(RenderRegionError::DuplicatedSegno { tick_pos: [segno_pos, tick] })
-        } else if repeats.contains(Repeat::Fine) {
-          if tick <= segno_pos {
-            Err(RenderRegionError::FineNotAfterSegno { segno_pos, fine_pos: tick })
-          } else {
-            Ok(FineSegno::Both { fine_pos: tick, segno_pos })
-          }
-        } else {
-          Ok(self)
-        }
-      FineSegno::Both { fine_pos, segno_pos } =>
-        if repeats.contains(Repeat::Segno) {
-          Err(RenderRegionError::DuplicatedSegno { tick_pos: [segno_pos, tick] })
-        } else if repeats.contains(Repeat::Fine) {
-          Err(RenderRegionError::DuplicatedFine { tick_pos: [fine_pos, tick] })
-        } else {
-          Ok(self)
-        }
-    }
-  }
 }
 
-fn render_region(start_rhythm: Rhythm, bars: Iter<Bar>) -> Result<Box<dyn Region>, RenderRegionError> {
+fn render_region(tune_rhythm: Rhythm, bars: Iter<Bar>) -> Result<(Box<dyn Region>, Vec<RenderRegionWarning>), RenderRegionError> {
   fn create_variation(start_tick: u32, region_start_ticks: Vec<u32>, end_tick: u32) -> Box<dyn SimpleRegion> {
     let mut variations: Vec<SequenceRegion> = vec![];
     let mut iter = region_start_ticks.iter();
     let mut tick = *iter.next().unwrap();
     for t in iter {
-      variations.push(SequenceRegion { start_tick: tick, end_tick: *t });
+      variations.push(SequenceRegion { tick_range: tick..*t });
       tick = *t;
     }
 
-    variations.push(SequenceRegion { start_tick: tick, end_tick });
+    variations.push(SequenceRegion { tick_range: tick..end_tick });
 
     Box::new(VariationRegion {
-      common: SequenceRegion { start_tick, end_tick: region_start_ticks[0] }, variations
+      common: SequenceRegion { tick_range: start_tick..region_start_ticks[0] }, variations
     })
-  }
-
-  fn create_dc(regions: Vec<Box<dyn SimpleRegion>>, fine_tick_pos: u32) -> DcRegion {
-    let len = regions.len();
-    if len == 0 {
-      panic!("Logic error.");
-    } else if len == 1 {
-      DcRegion {
-        body: regions.into_iter().next().unwrap(),
-        fine_tick_pos
-      }
-    } else {
-      DcRegion {
-        body: Box::new(CompoundRegion { regions }),
-        fine_tick_pos
-      }
-    }
-  }
-
-  fn create_ds(regions: Vec<Box<dyn SimpleRegion>>, segno_tick_pos: u32, fine_tick_pos: u32) -> DsRegion {
-    let len = regions.len();
-    if len == 0 {
-      panic!("Logic error.");
-    } else if len == 1 {
-      DsRegion {
-        body: regions.into_iter().next().unwrap(),
-        segno_tick_pos, fine_tick_pos
-      }
-    } else {
-      DsRegion {
-        body: Box::new(CompoundRegion { regions }),
-        segno_tick_pos, fine_tick_pos
-      }
-    }
   }
 
   let mut regions: Vec<Box<dyn SimpleRegion>> = vec![];
   let mut state = RenderRegionState::Idle;
   let mut is_auftakt: Option<bool> = None;
-  let mut fine_segno: FineSegno = FineSegno::Nothing;
+  let mut global_repeat: GlobalRepeatBuilder = GlobalRepeatBuilder::new(tune_rhythm);
 
   for bar in bars {
-    fn on_dc(
-      bar: &Bar, regions: Vec<Box<dyn SimpleRegion>>, fine_segno: FineSegno, is_auftakt: bool
-    ) -> Result<Box<dyn Region>, RenderRegionError> {
-      if bar.repeats.contains(Repeat::Start) || bar.repeats.region_index() != None {
-        return Err(RenderRegionError::RepeatOrVariationOnDc { tick_pos: bar.base_start_tick() });
-      }
-
-      match fine_segno {
-        FineSegno::Nothing =>
-          Err(RenderRegionError::NoFine { dc_or_ds_tick_pos: bar.base_start_tick() }),
-        FineSegno::Segno(segno_pos) =>
-          Err(RenderRegionError::SegnoAndDcFound { segno_pos, dc_pos: bar.base_start_tick() }),
-        FineSegno::Both { fine_pos, segno_pos } =>
-          Err(RenderRegionError::SegnoAndDcFound { segno_pos, dc_pos: bar.base_start_tick() }),
-        FineSegno::Fine(fine_pos) => Ok(
-          if regions.is_empty() {
-            Box::new(
-              create_dc(vec![Box::new(SequenceRegion { start_tick: 0, end_tick: bar.base_start_tick() })], fine_pos)
-            )
-          } else {
-            Box::new(create_dc(regions, fine_pos))
-          }
-        )
-      }
-    }
-
-    fn on_ds(
-      bar: &Bar, regions: Vec<Box<dyn SimpleRegion>>, fine_segno: FineSegno, is_auftakt: bool
-    ) -> Result<Box<dyn Region>, RenderRegionError> {
-      if bar.repeats.contains(Repeat::Start) || bar.repeats.region_index() != None {
-        return Err(RenderRegionError::RepeatOrVariationOnDs { tick_pos: bar.base_start_tick() });
-      }
-
-      match fine_segno {
-        FineSegno::Nothing =>
-          Err(RenderRegionError::NoFine { dc_or_ds_tick_pos: bar.base_start_tick() }),
-        FineSegno::Fine(_) => 
-          Err(RenderRegionError::NoSegnoForDs { ds_pos: bar.base_start_tick() }),
-        FineSegno::Segno(_) =>
-          Err(RenderRegionError::NoFine { dc_or_ds_tick_pos: bar.base_start_tick() }),
-        FineSegno::Both { fine_pos, segno_pos } => Ok (
-          if regions.is_empty() {
-            Box::new(
-              create_ds(vec![Box::new(SequenceRegion { start_tick: 0, end_tick: bar.base_start_tick() })], segno_pos, fine_pos)
-            )
-          } else {
-            Box::new(create_ds(regions, segno_pos, fine_pos))
-          }
-        )
-      }
-    }
-
-    fine_segno = fine_segno.on_bar(&bar)?;
+    global_repeat = global_repeat.on_bar(&bar)?;
     if is_auftakt.is_none() {
       if bar.base_start_tick() != 0 {
-        is_auftakt = Some(bar.base_start_tick() < start_rhythm.tick_len())
+        is_auftakt = Some(bar.base_start_tick() < tune_rhythm.tick_len())
       }
     }
 
     state = match &state {
       RenderRegionState::Idle => {
-        if bar.repeats.contains(Repeat::Dc) {
-          return on_dc(bar, regions, fine_segno, is_auftakt.unwrap_or(false));
-        } else if bar.repeats.contains(Repeat::Ds) {
-          return on_ds(bar, regions, fine_segno, is_auftakt.unwrap_or(false));
-        }
-
         if bar.repeats.contains(Repeat::Start) && bar.repeats.contains(Repeat::End) {
-          regions.push(Box::new(RepeatRegion { region: SequenceRegion { start_tick: 0, end_tick: bar.base_start_tick() }}));
+          regions.push(Box::new(RepeatRegion { region: SequenceRegion { tick_range: 0..bar.base_start_tick() }}));
           RenderRegionState::RepeatStart { start_tick: bar.base_start_tick() }
         } else if bar.repeats.contains(Repeat::End) {
-          regions.push(Box::new(RepeatRegion { region: SequenceRegion { start_tick: 0, end_tick: bar.base_start_tick() }}));
+          regions.push(Box::new(RepeatRegion { region: SequenceRegion { tick_range: 0..bar.base_start_tick() }}));
           RenderRegionState::Seq { start_tick: bar.base_start_tick() }
         } else if bar.repeats.contains(Repeat::Start) {
-          regions.push(Box::new(SequenceRegion { start_tick: 0, end_tick: bar.base_start_tick() }));
+          regions.push(Box::new(SequenceRegion { tick_range: 0..bar.base_start_tick() }));
           RenderRegionState::RepeatStart { start_tick: bar.base_start_tick() }
         } else if let Some(idx) = bar.repeats.region_index() {
           if idx != VarIndex::VI1 {
-            return Err(RenderRegionError::InvalidRegionIndex { tick_pos: bar.base_start_tick(), actual: idx, expected: VarIndex::VI1 });
+            return Err(report!(RenderRegionError::InvalidRegionIndex { tick: bar.base_start_tick(), actual: idx, expected: VarIndex::VI1 }));
           }
           RenderRegionState::Variation { start_tick: 0, region_start_ticks: vec![bar.base_start_tick()] }
         } else {
@@ -444,15 +360,9 @@ fn render_region(start_rhythm: Rhythm, bars: Iter<Bar>) -> Result<Box<dyn Region
       },
       RenderRegionState::Seq { start_tick } => {
         if bar.repeats.contains(Repeat::End) {
-          return Err(RenderRegionError::OrphanRepeatEnd{ tick_pos: bar.base_start_tick() });
-        } else if bar.repeats.contains(Repeat::Dc) {
-          regions.push(Box::new(SequenceRegion { start_tick: *start_tick, end_tick: bar.base_start_tick() }));
-          return on_dc(bar, regions, fine_segno, is_auftakt.unwrap_or(false));
-        } else if bar.repeats.contains(Repeat::Ds) {
-          regions.push(Box::new(SequenceRegion { start_tick: *start_tick, end_tick: bar.base_start_tick() }));
-          return on_ds(bar, regions, fine_segno, is_auftakt.unwrap_or(false));
+          return Err(report!(RenderRegionError::OrphanRepeatEnd{ tick: bar.base_start_tick() }));
         } else if bar.repeats.contains(Repeat::Start) {
-          regions.push(Box::new(SequenceRegion { start_tick: *start_tick, end_tick: bar.base_start_tick() }));
+          regions.push(Box::new(SequenceRegion { tick_range: *start_tick..bar.base_start_tick() }));
           RenderRegionState::RepeatStart { start_tick: bar.base_start_tick() }
         } else {
           state
@@ -460,32 +370,18 @@ fn render_region(start_rhythm: Rhythm, bars: Iter<Bar>) -> Result<Box<dyn Region
       },
       RenderRegionState::RepeatStart { start_tick } => {
         if bar.repeats.contains(Repeat::Start) && bar.repeats.contains(Repeat::End) {
-          if bar.repeats.contains(Repeat::Dc) {
-            return Err(RenderRegionError::RepeatOrVariationOnDc { tick_pos: bar.base_start_tick() });
-          } else if bar.repeats.contains(Repeat::Ds) {
-            return Err(RenderRegionError::RepeatOrVariationOnDs { tick_pos: bar.base_start_tick() });
-          }
-          regions.push(Box::new(RepeatRegion { region: SequenceRegion { start_tick: *start_tick, end_tick: bar.base_start_tick() }}));
+          regions.push(Box::new(RepeatRegion { region: SequenceRegion { tick_range: *start_tick..bar.base_start_tick() }}));
           RenderRegionState::RepeatStart { start_tick: bar.base_start_tick() }
         } else if bar.repeats.contains(Repeat::End) {
-          regions.push(Box::new(RepeatRegion { region: SequenceRegion { start_tick: *start_tick, end_tick: bar.base_start_tick() }}));
-          if bar.repeats.contains(Repeat::Dc) {
-            return on_dc(bar, regions, fine_segno, is_auftakt.unwrap_or(false));
-          } else if bar.repeats.contains(Repeat::Ds) {
-            return on_ds(bar, regions, fine_segno, is_auftakt.unwrap_or(false));
-          } else {
-            RenderRegionState::Seq { start_tick: bar.base_start_tick() }
-          }
+          regions.push(Box::new(RepeatRegion { region: SequenceRegion { tick_range: *start_tick..bar.base_start_tick() }}));
+          RenderRegionState::Seq { start_tick: bar.base_start_tick() }
         } else if bar.repeats.contains(Repeat::Start) {
-          if bar.repeats.contains(Repeat::Dc) {
-            return Err(RenderRegionError::RepeatOrVariationOnDc { tick_pos: bar.base_start_tick() });
-          } else if bar.repeats.contains(Repeat::Ds) {
-            return Err(RenderRegionError::RepeatOrVariationOnDs { tick_pos: bar.base_start_tick() });
-          }
-          return Err(RenderRegionError::DuplicatedRepeatStart { tick_pos: bar.base_start_tick() });
+          return Err(report!(RenderRegionError::DuplicatedRepeatStart { tick: bar.base_start_tick() }));
+        } else if bar.repeats.contains(Repeat::Dc) || bar.repeats.contains(Repeat::Ds) {
+          return Err(report!(RenderRegionError::DcDsWhileRepeat { tick: bar.base_start_tick() }));
         } else if let Some(idx) = bar.repeats.region_index() {
           if idx != VarIndex::VI1 {
-            return Err(RenderRegionError::InvalidRegionIndex { tick_pos: bar.base_start_tick(), actual: idx, expected: VarIndex::VI1 });
+            return Err(report!(RenderRegionError::InvalidRegionIndex { tick: bar.base_start_tick(), actual: idx, expected: VarIndex::VI1 }));
           }
           RenderRegionState::Variation { start_tick: *start_tick, region_start_ticks: vec![bar.base_start_tick()] }
         } else {
@@ -494,8 +390,11 @@ fn render_region(start_rhythm: Rhythm, bars: Iter<Bar>) -> Result<Box<dyn Region
       },
       RenderRegionState::Variation { start_tick, region_start_ticks } => {
         if bar.repeats.contains(Repeat::End) {
-          return Err(RenderRegionError::RepeatInVariation { tick_pos: bar.base_start_tick() })
+          return Err(report!(RenderRegionError::RepeatInVariation { tick: bar.base_start_tick() }))
         } else if let Some(ri) = bar.repeats.region_index() {
+          if bar.repeats.contains(Repeat::Dc) || bar.repeats.contains(Repeat::Ds) {
+            return Err(report!(RenderRegionError::DcDsWhileVariation { tick: bar.base_start_tick() }));
+          }
           let current_idx = region_start_ticks.len() as u8;
           let idx = ri.value();
           if idx == current_idx {
@@ -505,52 +404,59 @@ fn render_region(start_rhythm: Rhythm, bars: Iter<Bar>) -> Result<Box<dyn Region
             rst.push(bar.base_start_tick());
             RenderRegionState::Variation { start_tick: *start_tick, region_start_ticks: rst }
           } else {
-            return Err(RenderRegionError::InvalidRegionIndex {
-              tick_pos: bar.base_start_tick(), actual: ri, expected: VarIndex::from_value(current_idx + 1).unwrap()
-            });
+            return Err(report!(RenderRegionError::InvalidRegionIndex {
+              tick: bar.base_start_tick(), actual: ri, expected: VarIndex::from_value(current_idx + 1).unwrap()
+            }));
           }
         } else {
+          if let Some(segno) = global_repeat.segno {
+            if region_start_ticks[0] <= segno && segno < *region_start_ticks.last().unwrap() {
+              return Err(report!(RenderRegionError::SegnoWhildVariation { tick: bar.base_start_tick() }));
+            }
+          }
           regions.push(create_variation(*start_tick, region_start_ticks.clone(), bar.base_start_tick()));
 
           if bar.repeats.contains(Repeat::Start) {
             RenderRegionState::RepeatStart { start_tick: bar.base_start_tick() }
-          } else if bar.repeats.contains(Repeat::Ds) {
-            return on_ds(&bar, regions, fine_segno, is_auftakt.unwrap_or(false));
-          } else if bar.repeats.contains(Repeat::Dc) {
-            return on_dc(&bar, regions, fine_segno, is_auftakt.unwrap_or(false));
           } else {
             RenderRegionState::Seq { start_tick: bar.base_start_tick() }
           }
         }
-      },
+      }
     }
   }
 
   match state {
-    RenderRegionState::Idle => Ok(Box::new(SequenceRegion { start_tick: 0, end_tick: u32::MAX })),
-    RenderRegionState::Seq { start_tick } => if start_tick == 0 {
-      Ok(Box::new(SequenceRegion { start_tick: 0, end_tick: u32::MAX }))
-    } else {
-      regions.push(Box::new(SequenceRegion { start_tick, end_tick: u32::MAX }));
-      Ok(Box::new(CompoundRegion { regions }))
+    RenderRegionState::Idle => {
+      regions.push(Box::new(SequenceRegion { tick_range: 0..u32::MAX }));
+      let (gr, w) = global_repeat.build()?;
+      Ok((Box::new(CompoundRegion { regions, global_repeat: gr }), w))
+    },
+    RenderRegionState::Seq { start_tick } => {
+      regions.push(Box::new(SequenceRegion { tick_range: start_tick..u32::MAX }));
+      let (gr, w) = global_repeat.build()?;
+      Ok((Box::new(CompoundRegion { regions, global_repeat: gr }), w))
     }
-    RenderRegionState::RepeatStart { start_tick } => Err(RenderRegionError::NoRepeatEnd { tick_pos: start_tick }),
+    RenderRegionState::RepeatStart { start_tick } => Err(report!(RenderRegionError::NoRepeatEnd { tick: start_tick })),
     RenderRegionState::Variation { start_tick: _, region_start_ticks } => {
-      Err(RenderRegionError::VariationNotClosed { tick_pos: *region_start_ticks.last().unwrap() })
+      Err(report!(RenderRegionError::VariationNotClosed { tick: *region_start_ticks.last().unwrap() }))
     }
   }
 }
 
 #[cfg(test)]
 mod tests {
-  use crate::{repeat::{render_region, Chunk, RenderRegionError}, rhythm::Rhythm, bar::{Bar, RepeatSet, Repeat}};
+  use crate::{repeat::{render_region, Chunk, RenderRegionError, SimpleRegion, GlobalRepeatBuilder}, rhythm::Rhythm, bar::{Bar, Repeat}};
   use crate::repeat_set;
-  use super::FineSegno;
+  use super::{SequenceRegion, RenderPhase};
+  use crate::bar::RepeatSet;
+  use error_stack::Result;
 
   #[test]
   fn empty() {
     let bars: Vec<Bar> = vec![];
-    let chunks = render_region(Rhythm::new(4, 4), bars.iter()).unwrap().to_chunks();
+    let (region, warnings) = render_region(Rhythm::new(4, 4), bars.iter()).unwrap();
+    let chunks = region.to_chunks();
     assert_eq!(chunks.len(), 1);
     assert_eq!(chunks[0], Chunk::new(0, u32::MAX));
   }
@@ -561,7 +467,8 @@ mod tests {
   fn single_bar() {
     let bar = Bar::new(100, None, None, crate::repeat_set!());
     let bars = vec![bar];
-    let chunks = render_region(Rhythm::new(4, 4), bars.iter()).unwrap().to_chunks();
+    let (region, warnings) = render_region(Rhythm::new(4, 4), bars.iter()).unwrap();
+    let chunks = region.to_chunks();
     assert_eq!(chunks.len(), 1);
     assert_eq!(chunks[0], Chunk::new(0, u32::MAX));
   }
@@ -576,7 +483,8 @@ mod tests {
     let bars = vec![
       Bar::new(100, None, None, repeat_set!(Repeat::End))
     ];
-    let chunks = render_region(Rhythm::new(4, 4), bars.iter()).unwrap().to_chunks();
+    let (region, warnings) = render_region(Rhythm::new(4, 4), bars.iter()).unwrap();
+    let chunks = region.to_chunks();
     assert_eq!(chunks.len(), 3);
     assert_eq!(chunks[0], Chunk::new(0, 100));
     assert_eq!(chunks[1], Chunk::new(0, 100));
@@ -593,8 +501,10 @@ mod tests {
       Bar::new(100, None, None, repeat_set!(Repeat::End)),
       Bar::new(200, None, None, repeat_set!(Repeat::End)),
     ];
-    let err = render_region(Rhythm::new(4, 4), bars.iter()).err().unwrap();
-    assert_eq!(err, RenderRegionError::OrphanRepeatEnd { tick_pos: 200 });
+
+    let e =  render_region(Rhythm::new(4, 4), bars.iter()).unwrap_err();
+    let err: &RenderRegionError = e.current_context();
+    assert_eq!(*err, RenderRegionError::OrphanRepeatEnd { tick: 200 });
   }
 
   // 0    100     200
@@ -609,7 +519,8 @@ mod tests {
       Bar::new(200, None, None, repeat_set!(Repeat::End)),
     ];
 
-    let chunks = render_region(Rhythm::new(4, 4), bars.iter()).unwrap().to_chunks();
+    let (region, warnings) = render_region(Rhythm::new(4, 4), bars.iter()).unwrap();
+    let chunks = region.to_chunks();
     assert_eq!(chunks.len(), 4);
     assert_eq!(chunks[0], Chunk::new(0, 100));
     assert_eq!(chunks[1], Chunk::new(100, 200));
@@ -629,7 +540,8 @@ mod tests {
       Bar::new(200, None, None, repeat_set!(Repeat::End)),
     ];
 
-    let chunks = render_region(Rhythm::new(4, 4), bars.iter()).unwrap().to_chunks();
+    let (region, warnings) = render_region(Rhythm::new(4, 4), bars.iter()).unwrap();
+    let chunks = region.to_chunks();
     assert_eq!(chunks.len(), 4);
     assert_eq!(chunks[0], Chunk::new(0, 50));
     assert_eq!(chunks[1], Chunk::new(50, 200));
@@ -650,7 +562,8 @@ mod tests {
       Bar::new(150, None, None, repeat_set!()),
     ];
 
-    let chunks = render_region(Rhythm::new(4, 4), bars.iter()).unwrap().to_chunks();
+    let (region, warnings) = render_region(Rhythm::new(4, 4), bars.iter()).unwrap();
+    let chunks = region.to_chunks();
     assert_eq!(chunks.len(), 5);
     assert_eq!(chunks[0], Chunk::new(0, 50));
     assert_eq!(chunks[1], Chunk::new(50, 100));
@@ -674,7 +587,8 @@ mod tests {
       Bar::new(650, None, None, repeat_set!()),
     ];
 
-    let chunks = render_region(Rhythm::new(4, 4), bars.iter()).unwrap().to_chunks();
+    let (region, warnings) = render_region(Rhythm::new(4, 4), bars.iter()).unwrap();
+    let chunks = region.to_chunks();
     assert_eq!(chunks.len(), 5);
     assert_eq!(chunks[0], Chunk::new(0, 100));
     assert_eq!(chunks[1], Chunk::new(100, 350));
@@ -697,7 +611,8 @@ mod tests {
       Bar::new(1440, None, None, repeat_set!(Repeat::Dc)),
     ];
 
-    let chunks = render_region(Rhythm::new(2, 4), bars.iter()).unwrap().to_chunks();
+    let (region, warnings) = render_region(Rhythm::new(2, 4), bars.iter()).unwrap();
+    let chunks = region.to_chunks();
     assert_eq!(chunks.len(), 2);
     assert_eq!(chunks[0], Chunk::new(0, 1440));
     assert_eq!(chunks[1], Chunk::new(0, 480));
@@ -720,7 +635,7 @@ mod tests {
       Bar::new(1280, None, None, repeat_set!(Repeat::Dc)),
     ];
 
-    let region = render_region(Rhythm::new(2, 4), bars.iter()).unwrap();
+    let (region, warnings) = render_region(Rhythm::new(2, 4), bars.iter()).unwrap();
     let chunks = region.to_chunks();
     assert_eq!(chunks.len(), 7);
     assert_eq!(chunks[0], Chunk::new(0, 480));
@@ -732,28 +647,30 @@ mod tests {
     assert_eq!(chunks[6], Chunk::new(730, 1030));
   }
 
-  // 0 480    530        630   730 
+  // 0 480    530        600   1080 
   // A |: B :|:[Fine] C :|: D :|[D.C.]
+  //
+  // A B B C C D D A B
   #[test]
   fn dc_and_repeat_end() {
     let bars = vec![
       Bar::new(480, None, None, repeat_set!(Repeat::Start)),
       Bar::new(530, None, None, repeat_set!(Repeat::Start, Repeat::End, Repeat::Fine)),
-      Bar::new(630, None, None, repeat_set!(Repeat::Start, Repeat::End)),
-      Bar::new(730, None, None, repeat_set!(Repeat::Dc, Repeat::End)),
+      Bar::new(600, None, None, repeat_set!(Repeat::Start, Repeat::End)),
+      Bar::new(1080, None, None, repeat_set!(Repeat::Dc, Repeat::End)),
     ];
 
-    let region = render_region(Rhythm::new(2, 4), bars.iter()).unwrap();
+    let (region, warnings) = render_region(Rhythm::new(2, 4), bars.iter()).unwrap();
     let chunks = region.to_chunks();
     assert_eq!(chunks.len(), 9);
 
     assert_eq!(chunks[0], Chunk::new(0, 480));
     assert_eq!(chunks[1], Chunk::new(480, 530));
     assert_eq!(chunks[2], Chunk::new(480, 530));
-    assert_eq!(chunks[3], Chunk::new(530, 630));
-    assert_eq!(chunks[4], Chunk::new(530, 630));
-    assert_eq!(chunks[5], Chunk::new(630, 730));
-    assert_eq!(chunks[6], Chunk::new(630, 730));
+    assert_eq!(chunks[3], Chunk::new(530, 600));
+    assert_eq!(chunks[4], Chunk::new(530, 600));
+    assert_eq!(chunks[5], Chunk::new(600, 1080));
+    assert_eq!(chunks[6], Chunk::new(600, 1080));
     assert_eq!(chunks[7], Chunk::new(0, 480));
     assert_eq!(chunks[8], Chunk::new(480, 530));
   }
@@ -777,7 +694,7 @@ mod tests {
       Bar::new(450, None, None, repeat_set!()),
     ];
 
-    let region = render_region(Rhythm::new(2, 4), bars.iter()).unwrap();
+    let (region, warnings) = render_region(Rhythm::new(2, 4), bars.iter()).unwrap();
     let chunks = region.to_chunks();
     assert_eq!(chunks.len(), 10);
 
@@ -815,7 +732,7 @@ mod tests {
       Bar::new(600, None, None, repeat_set!()),
     ];
 
-    let region = render_region(Rhythm::new(2, 4), bars.iter()).unwrap();
+    let (region, warnings) = render_region(Rhythm::new(2, 4), bars.iter()).unwrap();
     let chunks = region.to_chunks();
     assert_eq!(chunks.len(), 11);
 
@@ -857,7 +774,7 @@ mod tests {
       Bar::new(970, None, None, repeat_set!(Repeat::Dc)),
     ];
 
-    let region = render_region(Rhythm::new(2, 4), bars.iter()).unwrap();
+    let (region, warnings) = render_region(Rhythm::new(2, 4), bars.iter()).unwrap();
     let chunks = region.to_chunks();
     assert_eq!(chunks.len(), 20);
 
@@ -901,7 +818,7 @@ mod tests {
       Bar::new(300, None, None, repeat_set!(Repeat::End)),
     ];
 
-    let region = render_region(Rhythm::new(2, 4), bars.iter()).unwrap();
+    let (region, warnings) = render_region(Rhythm::new(2, 4), bars.iter()).unwrap();
     let chunks = region.to_chunks();
     assert_eq!(chunks.len(), 5);
 
@@ -926,7 +843,7 @@ mod tests {
       Bar::new(370, None, None, repeat_set!(Repeat::Dc, Repeat::End)),
     ];
 
-    let region = render_region(Rhythm::new(1, 4), bars.iter()).unwrap();
+    let (region, warnings) = render_region(Rhythm::new(1, 4), bars.iter()).unwrap();
     let chunks = region.to_chunks();
     assert_eq!(chunks.len(), 5);
 
@@ -952,7 +869,7 @@ mod tests {
       Bar::new(370, None, None, repeat_set!(Repeat::Dc, Repeat::End)),
     ];
 
-    let region = render_region(Rhythm::new(1, 4), bars.iter()).unwrap();
+    let (region, warnings) = render_region(Rhythm::new(1, 4), bars.iter()).unwrap();
     let chunks = region.to_chunks();
     assert_eq!(chunks.len(), 9);
 
@@ -969,57 +886,32 @@ mod tests {
     assert_eq!(z.next(), None);
   }
 
+  // 0 120 170  270  370    470
+  // A | B |: C | D :|D.C. E |
+  // 
+  // A B C D C D A B C D E
   #[test]
-  fn fine_segno() {
-    assert_eq!(
-      Ok(FineSegno::Fine(120)),
-      FineSegno::Nothing.on_bar(&Bar::new(120, None, None, repeat_set!(Repeat::Fine)))
-    );
+  fn dc_without_fine() {
+    let bars = vec![
+      Bar::new(120, None, None, repeat_set!()),
+      Bar::new(170, None, None, repeat_set!(Repeat::Start)),
+      Bar::new(270, None, None, repeat_set!()),
+      Bar::new(370, None, None, repeat_set!(Repeat::Dc, Repeat::End)),
+      Bar::new(470, None, None, repeat_set!()),
+    ];
 
-    assert_eq!(
-      Ok(FineSegno::Segno(120)),
-      FineSegno::Nothing.on_bar(&Bar::new(120, None, None, repeat_set!(Repeat::Segno)))
-    );
+    let (region, warnings) = render_region(Rhythm::new(1, 4), bars.iter()).unwrap();
+    let chunks = region.to_chunks();
+    assert_eq!(chunks.len(), 6);
 
-    assert_eq!(
-      Err(RenderRegionError::FineNotAfterSegno { segno_pos: 120, fine_pos: 120 }),
-      FineSegno::Nothing.on_bar(&Bar::new(120, None, None, repeat_set!(Repeat::Segno, Repeat::Fine)))
-    );
-
-    assert_eq!(
-      Err(RenderRegionError::DuplicatedFine { tick_pos: [120, 240] }),
-      FineSegno::Fine(120).on_bar(&Bar::new(240, None, None, repeat_set!(Repeat::Fine)))
-    );
-
-    assert_eq!(
-      Err(RenderRegionError::DuplicatedSegno { tick_pos: [120, 240] }),
-      FineSegno::Segno(120).on_bar(&Bar::new(240, None, None, repeat_set!(Repeat::Segno)))
-    );
-
-    assert_eq!(
-      Err(RenderRegionError::FineNotAfterSegno { segno_pos: 120, fine_pos: 120 }),
-      FineSegno::Segno(120).on_bar(&Bar::new(120, None, None, repeat_set!(Repeat::Fine)))
-    );
-
-    assert_eq!(
-      Err(RenderRegionError::FineNotAfterSegno { segno_pos: 121, fine_pos: 120 }),
-      FineSegno::Fine(120).on_bar(&Bar::new(121, None, None, repeat_set!(Repeat::Segno)))
-    );
-
-    assert_eq!(
-      Ok(FineSegno::Both { segno_pos: 120, fine_pos: 121 }),
-      FineSegno::Segno(120).on_bar(&Bar::new(121, None, None, repeat_set!(Repeat::Fine)))
-    );
-
-    assert_eq!(
-      Err(RenderRegionError::DuplicatedFine { tick_pos: [120, 121] }),
-      FineSegno::Both { segno_pos: 100, fine_pos: 120 }.on_bar(&Bar::new(121, None, None, repeat_set!(Repeat::Fine)))
-    );
-    
-    assert_eq!(
-      Err(RenderRegionError::DuplicatedSegno { tick_pos: [120, 121] }),
-      FineSegno::Both { segno_pos: 120, fine_pos: 220 }.on_bar(&Bar::new(121, None, None, repeat_set!(Repeat::Segno)))
-    );
+    let mut z = chunks.iter();
+    assert_eq!(*z.next().unwrap(), Chunk::new(0, 170));
+    assert_eq!(*z.next().unwrap(), Chunk::new(170, 370));
+    assert_eq!(*z.next().unwrap(), Chunk::new(170, 370));
+    assert_eq!(*z.next().unwrap(), Chunk::new(0, 170));
+    assert_eq!(*z.next().unwrap(), Chunk::new(170, 370));
+    assert_eq!(*z.next().unwrap(), Chunk::new(370, u32::MAX));
+    assert_eq!(z.next(), None);
   }
 
   // 0   120   200         270          370
@@ -1035,7 +927,7 @@ mod tests {
       Bar::new(370, None, None, repeat_set!(Repeat::Ds, Repeat::End)),
     ];
 
-    let region = render_region(Rhythm::new(1, 4), bars.iter()).unwrap();
+    let (region, warnings) = render_region(Rhythm::new(1, 4), bars.iter()).unwrap();
     let chunks = region.to_chunks();
     assert_eq!(chunks.len(), 5);
 
@@ -1063,7 +955,7 @@ mod tests {
       Bar::new(570, None, None, repeat_set!(Repeat::Ds)),
     ];
 
-    let region = render_region(Rhythm::new(1, 4), bars.iter()).unwrap();
+    let (region, warnings) = render_region(Rhythm::new(1, 4), bars.iter()).unwrap();
     let chunks = region.to_chunks();
     assert_eq!(chunks.len(), 7);
 
@@ -1077,4 +969,152 @@ mod tests {
     assert_eq!(*z.next().unwrap(), Chunk::new(200, 270));
     assert_eq!(z.next(), None);
   }    
+
+  // 0   120   200         270  370     470  570     670
+  //   A  |  B  |Segno C   :| D |Coda E | F |Coda G  | D.S
+  //
+  //   A  |  B  |  C  |  A  |  B  |  C  |  D | E | F | G | C | D | G
+  #[test]
+  fn ds_and_coda() {
+    let bars = vec![
+      Bar::new(120, None, None, repeat_set!()),
+      Bar::new(200, None, None, repeat_set!(Repeat::Segno)),
+      Bar::new(270, None, None, repeat_set!(Repeat::End)),
+      Bar::new(370, None, None, repeat_set!(Repeat::Coda)),
+      Bar::new(470, None, None, repeat_set!()),
+      Bar::new(570, None, None, repeat_set!(Repeat::Coda)),
+      Bar::new(670, None, None, repeat_set!(Repeat::Ds)),
+    ];
+
+    let (region, warnings) = render_region(Rhythm::new(1, 4), bars.iter()).unwrap();
+    let chunks = region.to_chunks();
+    assert_eq!(chunks.len(), 6);
+
+    let mut z = chunks.iter();
+    assert_eq!(*z.next().unwrap(), Chunk::new(0, 270));
+    assert_eq!(*z.next().unwrap(), Chunk::new(0, 270));
+    assert_eq!(*z.next().unwrap(), Chunk::new(270, 670));
+    assert_eq!(*z.next().unwrap(), Chunk::new(200, 270));
+    assert_eq!(*z.next().unwrap(), Chunk::new(270, 370));
+    assert_eq!(*z.next().unwrap(), Chunk::new(570, u32::MAX));
+    assert_eq!(z.next(), None);
+  }    
+
+  // 0   120   200         270  370     470  570     670   770
+  //   A  |  B  |Segno C   :| D |Coda E | F |Coda G  |Fine |D.S
+  //
+  //   A  |  B  |  C  |  A  |  B  |  C  |  D | E | G 
+  #[test]
+  fn ds_and_coda_fine() {
+    let bars = vec![
+      Bar::new(120, None, None, repeat_set!()),
+      Bar::new(200, None, None, repeat_set!(Repeat::Segno)),
+      Bar::new(270, None, None, repeat_set!(Repeat::End)),
+      Bar::new(370, None, None, repeat_set!(Repeat::Coda)),
+      Bar::new(470, None, None, repeat_set!()),
+      Bar::new(570, None, None, repeat_set!(Repeat::Coda)),
+      Bar::new(670, None, None, repeat_set!(Repeat::Fine)),
+      Bar::new(770, None, None, repeat_set!(Repeat::Ds)),
+    ];
+
+    let (region, warnings) = render_region(Rhythm::new(1, 4), bars.iter()).unwrap();
+    let chunks = region.to_chunks();
+    assert_eq!(chunks.len(), 6);
+
+    let mut z = chunks.iter();
+    assert_eq!(*z.next().unwrap(), Chunk::new(0, 270));
+    assert_eq!(*z.next().unwrap(), Chunk::new(0, 270));
+    assert_eq!(*z.next().unwrap(), Chunk::new(270, 770));
+    assert_eq!(*z.next().unwrap(), Chunk::new(200, 270));
+    assert_eq!(*z.next().unwrap(), Chunk::new(270, 370));
+    assert_eq!(*z.next().unwrap(), Chunk::new(570, 670));
+    assert_eq!(z.next(), None);
+  }    
+
+  // 0   120   200         270  370     470 570  670
+  //   A  |  B  |Segno C   :| D |Coda E | F |D.S |Coda H
+  //
+  //   A  |  B  |  C  |  A  |  B  |  C  |  D | E | F | C | D | H
+  #[test]
+  fn ds_and_coda_skip_ds() {
+    let bars = vec![
+      Bar::new(120, None, None, repeat_set!()),
+      Bar::new(200, None, None, repeat_set!(Repeat::Segno)),
+      Bar::new(270, None, None, repeat_set!(Repeat::End)),
+      Bar::new(370, None, None, repeat_set!(Repeat::Coda)),
+      Bar::new(470, None, None, repeat_set!()),
+      Bar::new(570, None, None, repeat_set!(Repeat::Ds)),
+      Bar::new(670, None, None, repeat_set!(Repeat::Coda)),
+    ];
+
+    let (region, warnings) = render_region(Rhythm::new(1, 4), bars.iter()).unwrap();
+    let chunks = region.to_chunks();
+    assert_eq!(chunks.len(), 6);
+
+    let mut z = chunks.iter();
+    assert_eq!(*z.next().unwrap(), Chunk::new(0, 270));
+    assert_eq!(*z.next().unwrap(), Chunk::new(0, 270));
+    assert_eq!(*z.next().unwrap(), Chunk::new(270, 570));
+    assert_eq!(*z.next().unwrap(), Chunk::new(200, 270));
+    assert_eq!(*z.next().unwrap(), Chunk::new(270, 370));
+    assert_eq!(*z.next().unwrap(), Chunk::new(670, u32::MAX));
+    assert_eq!(z.next(), None);
+  }    
+
+  #[test]  
+  fn render_sequence_region_when_non_dcds() {
+    let seq_region = SequenceRegion {
+      tick_range: 100..200
+    };
+    let chunks: Vec<Chunk> = seq_region.render_chunks(&RenderPhase::NonDcDs);
+    assert_eq!(chunks.len(), 1);
+    assert_eq!(chunks[0], Chunk { start_tick: 100, end_tick: 200 });
+  }
+
+  #[test]  
+  fn render_sequence_region_when_dcds_iter0() {
+    let seq_region = SequenceRegion {
+      tick_range: 100..200
+    };
+    let chunks: Vec<Chunk> = seq_region.render_chunks(&RenderPhase::DcDsIter0 { dc_ds_tick: 99 });
+    assert_eq!(chunks.len(), 0);
+
+    let chunks: Vec<Chunk> = seq_region.render_chunks(&RenderPhase::DcDsIter0 { dc_ds_tick: 100 });
+    assert_eq!(chunks.len(), 0);
+
+    let chunks: Vec<Chunk> = seq_region.render_chunks(&RenderPhase::DcDsIter0 { dc_ds_tick: 101 });
+    assert_eq!(chunks.len(), 1);
+    assert_eq!(chunks[0], Chunk { start_tick: 100, end_tick: 101 });
+
+    let chunks: Vec<Chunk> = seq_region.render_chunks(&RenderPhase::DcDsIter0 { dc_ds_tick: 199 });
+    assert_eq!(chunks.len(), 1);
+    assert_eq!(chunks[0], Chunk { start_tick: 100, end_tick: 199 });
+
+    let chunks: Vec<Chunk> = seq_region.render_chunks(&RenderPhase::DcDsIter0 { dc_ds_tick: 200 });
+    assert_eq!(chunks.len(), 1);
+    assert_eq!(chunks[0], Chunk { start_tick: 100, end_tick: 200 });
+
+    let chunks: Vec<Chunk> = seq_region.render_chunks(&RenderPhase::DcDsIter0 { dc_ds_tick: 201 });
+    assert_eq!(chunks.len(), 1);
+    assert_eq!(chunks[0], Chunk { start_tick: 100, end_tick: 200 });
+  }
+
+  #[test]  
+  fn render_sequence_region_when_dcds_iter1() -> Result<(), RenderRegionError> {
+    let seq_region = SequenceRegion {
+      tick_range: 100..200
+    };
+    let (global_repeat, _warn) = GlobalRepeatBuilder::new(Rhythm::new(4, 4))
+      .adding_segno(99)?
+      .adding_dc(400, 100)?
+      .adding_first_bar_len(30)?
+      .build()?;
+
+    let rp = RenderPhase::DcDsIter1(global_repeat.unwrap());
+    let chunks = seq_region.render_chunks(&rp);
+
+    assert_eq!(chunks.len(), 1);
+    assert_eq!(chunks[0], Chunk { start_tick: 100, end_tick: 200 });
+    Ok(())
+  }
 }

@@ -23,3 +23,4 @@ pub mod grid;
 pub mod undo;
 pub mod models;
 pub mod repeat;
+pub mod global_repeat;

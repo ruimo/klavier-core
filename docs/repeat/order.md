@@ -7,17 +7,14 @@
     - ...
     - Play common region then play the variation N.
 - Da Capo region is played as the following. [See Da Capo examples](examples.md#da-capo)
-    - Play the entire regions as normal.
-    - Play the regions from the top of the regions and play until it finds a Fine.
-        - If it encounters a repeat region, play only once but twice.
-        - If it encounters a variation region, play the common region and then only the last variation.
+    - Da Capo is essentially same as the Dal Segno as if Segno is located at the top of the tune (implicit Segno).
     - When the tune is auftakt, the following rule is applied.
-        - Play the entire regions as normal.
-        - If the last bar length is normal, that is equal to the full length calculated by the rhythm, go back to the second bar but the first one and play until it finds a Fine.
-        - Otherwise play as normal D.C., go back to the top of the regions and play until it finds a Fine.
+        - The bar length where Da Capo is located at the end of the bar is equal to the full bar length calculated by the tune's rhythm, play as if the implicit Segno is located at the beginning of the second bar (skip playing the first bar when goes back from D.C.).
+        - Otherwise, play as if the implicit Segno is located at the top of the tune. The length of the first bar plus the length of the D.C bar should be equal to the full bar length calculated by the tune's rhythm.
 - Dal Segno region is played as the follwing.  [See Dal Segno examples](examples.md#dal-segno)
-    - Play the entire regions as normal.
-    - Go back to the Segno and play the regions until it finds a Fine.
-        - If it encounters a repeat region, play only once but twice.
-        - If it encounters a variation region, play the common region and then only the last variation.
-    
+    - Play is the entire regions as normal until D.S. is found.
+    - Go back to the Segno and play the regions.
+        - If Fine is found, end playing.
+        - For the repeat region, play only once but twice.
+        - For the variation region, play the common region and then only the last variation.
+        - If a Coda is found, jump to the second Coda.
