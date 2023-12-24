@@ -31,4 +31,4 @@ extra_javascript:
   - https://unpkg.com/mermaid@10.6.1/dist/mermaid.min.js
 
 extra_css:
-  - /my.css
+  - my.css
