@@ -7,40 +7,35 @@ This library supports the following structures.
 - Repeat
 - Repeat with variation
 - Da Capo (D.C.)
-- Dal Segno (D.S.)<br/>Current version does not support Coda.
+- Dal Segno (D.S.)
 
 ## Detailed structure
 
+Region:
 ``` mermaid
 graph LR
   S(( )) --> CR[Compound Region] --> E(( ));
-  S --> DS[D.S./D.C. Region] --> E;
+  S --> DS[Simple Region] --> E;
 ```
 
-D.S./D.C. Region:
-``` mermaid
-graph LR
-  S(( )) --> R[Compound Region] --> E(( ));
-```
-
-In the D.S./D.C. region, Segno, Fine, and Coda can be used.
+Compound region can contain D.S./D.C. Segno, Fine, and Coda can be used with D.S./D.C.
 
 - Segno must be located before Fine.
-- If this is D.S. region, one Segno must be located.
-- If this is not D.S. Region, Segno should not be located.
-- If this is not D.S. nor D.C. region, Fine should not be located.
-- If this is not D.S. nor D.C. region, Coda should not be located.
+- If D.S. exists, one Segno must be located.
+- Segno should not be used without D.S.
+- If D.S. nor D.C. exists, Fine should not be located.
+- If D.S. nor D.C. exists, Coda should not be located.
 - The number of Codas should be zero or two.
 - If there are Codas and Fine, Codas should be before Fine.
 
 Compound Region:
 ``` mermaid
 graph LR
-  S(( )) --> R[Region] --> E(( ));
+  S(( )) --> R[Simple Region] --> E(( ));
   E --> S;
 ```
 
-Region:
+Simple Region:
 ``` mermaid
 graph LR
   S(( )) --> SR[Sequence Region] --> E(( ));
@@ -58,7 +53,7 @@ graph LR
 Repeat Region:
 ``` mermaid
 graph LR
-  RS[Repeat Start] --> SE[Sequence Region] --> RE[Repeat End];
+  RS[Repeat Start Bar] --> SE[Sequence Region] --> RE[Repeat End Bar];
 ```
 
 Variation Region:

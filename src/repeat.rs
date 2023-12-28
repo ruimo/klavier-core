@@ -1,5 +1,5 @@
 use std::{slice::Iter, ops::Range, fmt::Display};
-use error_stack::{Report, Context, report};
+use error_stack::{Context, report};
 use gcollections::ops::{Intersection, Union, Bounded};
 use interval::{IntervalSet, interval_set::ToIntervalSet};
 use error_stack::Result;
@@ -32,7 +32,6 @@ enum RenderPhase {
 }
 
 // SimpleRegion can be stored in a compound region.
-// D.C. Region is not a SimpleRegion.
 trait SimpleRegion: Region {
   fn render_chunks(&self, phase: &RenderPhase) -> Vec<Chunk>;
   fn to_iter1_chunks(&self, global_repeat: &GlobalRepeat) -> Vec<Chunk> {
@@ -60,7 +59,7 @@ impl Region for NullRegion {
 }
 
 impl SimpleRegion for NullRegion {
-  fn render_chunks(&self, phase: &RenderPhase) -> Vec<Chunk> {
+  fn render_chunks(&self, _phase: &RenderPhase) -> Vec<Chunk> {
     vec![]
   }
 }
@@ -191,7 +190,6 @@ impl Region for VariationRegion {
   }
 }
 
-
 impl SimpleRegion for VariationRegion {
   fn render_chunks(&self, phase: &RenderPhase) -> Vec<Chunk> {
     fn full(vr: &VariationRegion) -> Vec<Chunk> {
@@ -235,11 +233,23 @@ impl Region for CompoundRegion {
     match self.global_repeat.as_ref() {
         Some(gr) => {
           let mut chunks = vec![];
-          chunks.extend(self.render_chunks(&RenderPhase::DcDsIter0 { dc_ds_tick: gr.ds_dc().tick() }));
-          chunks.extend(self.render_chunks(&RenderPhase::DcDsIter1(gr.clone())));
+          for r in self.regions.iter() {
+            chunks.extend(r.render_chunks(&RenderPhase::DcDsIter0 { dc_ds_tick: gr.ds_dc().tick() }));
+          }
+          for r in self.regions.iter() {
+            chunks.extend(r.render_chunks(&RenderPhase::DcDsIter1(gr.clone())));
+          }
+
           chunks
         }
-        None => self.render_chunks(&RenderPhase::NonDcDs)
+        None => {
+          let mut chunks = vec![];
+          for r in self.regions.iter() {
+            chunks.extend(r.render_chunks(&RenderPhase::NonDcDs));
+          }
+
+          chunks
+        }
     }
   }
 
@@ -250,16 +260,6 @@ impl Region for CompoundRegion {
     );
     
     self.global_repeat.as_ref().map(|gr| union.intersection(gr.iter1_interval_set())).unwrap_or(union)
-  }
-}
-
-impl SimpleRegion for CompoundRegion {
-  fn render_chunks(&self, phase: &RenderPhase) -> Vec<Chunk> {
-    let mut buf: Vec<Chunk> = vec![];
-    for r in self.regions.iter() {
-      buf.extend(r.render_chunks(phase));
-    }
-    buf
   }
 }
 

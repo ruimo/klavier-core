@@ -19,9 +19,12 @@ The following constructs are included.
     - Trimmer (trim velocity, length, and start tick)
 - Tempo
 - Repeat
-- Repeat with variation
-- Da Capo (D.C.)
-- Dal Segno (D.S.)
+    - Simple repeat
+    - Repeat with variation
+    - Da Capo (D.C.)
+    - Dal Segno (D.S.)
+    - Fine
+    - Coda
 - Project
     - Key
     - Grid (Can snap to the horizontal position)
