@@ -1,4 +1,4 @@
-use std::{slice::Iter, ops::Range, fmt::Display};
+use std::{ops::Range, fmt::Display};
 use error_stack::{Context, report};
 use gcollections::ops::{Intersection, Union, Bounded};
 use interval::{IntervalSet, interval_set::ToIntervalSet};
@@ -316,7 +316,7 @@ impl Display for RenderRegionError {
     }
 }
 
-pub fn render_region(tune_rhythm: Rhythm, bars: Iter<Bar>) -> Result<(Box<dyn Region>, Vec<RenderRegionWarning>), RenderRegionError> {
+pub fn render_region<'a>(tune_rhythm: Rhythm, bars: impl Iterator<Item = &'a Bar>) -> Result<(Box<dyn Region>, Vec<RenderRegionWarning>), RenderRegionError> {
   fn create_variation(start_tick: u32, region_start_ticks: Vec<u32>, end_tick: u32) -> Box<dyn SimpleRegion> {
     let mut variations: Vec<SequenceRegion> = vec![];
     let mut iter = region_start_ticks.iter();
