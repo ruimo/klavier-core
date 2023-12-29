@@ -12,17 +12,17 @@ pub struct Chunk {
 }
 
 impl Chunk {
-  fn new(start_tick: u32, end_tick: u32) -> Self {
+  pub fn new(start_tick: u32, end_tick: u32) -> Self {
     Self {
       start_tick, end_tick
     }
   }
 
-  fn start_tick(self) -> u32 {
+  pub fn start_tick(self) -> u32 {
     self.start_tick
   }
 
-  fn end_tick(self) -> u32 {
+  pub fn end_tick(self) -> u32 {
     self.end_tick
   }
 }
