@@ -27,7 +27,7 @@ impl Chunk {
   }
 }
 
-trait Region: std::fmt::Debug {
+pub trait Region: std::fmt::Debug {
   fn to_chunks(&self) -> Vec<Chunk>;
   fn to_iter1_interval_set(&self) -> IntervalSet<u32>;
 }
