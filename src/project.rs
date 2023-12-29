@@ -1,6 +1,4 @@
-use std::collections::btree_map;
 use std::rc::Rc;
-use std::slice::Iter;
 
 use klavier_helper::bag_store::{BagStore, BagStoreEvent};
 use klavier_helper::store::{Store, StoreEvent};
@@ -172,6 +170,10 @@ impl ProjectImpl {
     pub fn dumper_repo(&self) -> &Store<u32, CtrlChg, ModelChangeMetadata> {
         &self.dumper_repo
     }
+
+    pub fn soft_repo(&self) -> &Store<u32, CtrlChg, ModelChangeMetadata> {
+        &self.soft_repo
+    }
     
     pub fn rhythm(&self) -> Rhythm {
         self.rhythm
@@ -338,32 +340,6 @@ impl ProjectImpl {
         }
         replenished_bars
     }
-
-    #[inline]
-    fn note_iter_vec(&self) -> btree_map::Iter<'_, u32, Vec<Rc<Note>>> {
-        self.note_repo.iter_vec()
-    }
-
-    #[inline]
-    fn bar_iter(&self) -> Iter<'_, (u32, Bar)> {
-        self.bar_repo.iter()
-    }
-
-    #[inline]
-    fn tempo_iter(&self) -> Iter<'_, (u32, Tempo)> {
-        self.tempo_repo.iter()
-    }
-
-    #[inline]
-    fn soft_iter(&self) -> Iter<'_, (u32, CtrlChg)> {
-        self.soft_repo.iter()
-    }
-
-    #[inline]
-    fn dumper_iter(&self) -> Iter<'_, (u32, CtrlChg)> {
-        self.dumper_repo.iter()
-    }
-
 }
 
 pub fn tempo_at(tick: u32, store: &Store<u32, Tempo, ModelChangeMetadata>) -> TempoValue {
@@ -572,11 +548,11 @@ pub trait Project {
     fn location_to_tick(&self, loc: Location) -> Result<u32, LocationError>;
     fn tick_to_location(&self, tick: u32) -> Location;
     fn rhythm_at(&self, tick: u32) -> Rhythm;
-    fn note_iter_vec(&self) -> btree_map::Iter<'_, u32, Vec<Rc<Note>>>;
-    fn bar_iter(&self) -> Iter<'_, (u32, Bar)>;
-    fn tempo_iter(&self) -> Iter<'_, (u32, Tempo)>;
-    fn soft_iter(&self) -> Iter<'_, (u32, CtrlChg)>;
-    fn dumper_iter(&self) -> Iter<'_, (u32, CtrlChg)>;
+    fn note_repo(&self) -> &BagStore<u32, Rc<Note>, ModelChangeMetadata>;
+    fn bar_repo(&self) -> &Store<u32, Bar, ModelChangeMetadata>;
+    fn tempo_repo(&self) -> &Store<u32, Tempo, ModelChangeMetadata>;
+    fn soft_repo(&self) -> &Store<u32, CtrlChg, ModelChangeMetadata>;
+    fn dumper_repo(&self) -> &Store<u32, CtrlChg, ModelChangeMetadata>;
 }
 
 impl Project for SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr> {
@@ -910,28 +886,28 @@ impl Project for SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr> {
     }
 
     #[inline]
-    fn note_iter_vec(&self) -> btree_map::Iter<'_, u32, Vec<Rc<Note>>> {
-        self.model().note_iter_vec()
+    fn note_repo(&self) -> &BagStore<u32, Rc<Note>, ModelChangeMetadata> {
+        &self.model().note_repo()
     }
 
     #[inline]
-    fn bar_iter(&self) -> Iter<'_, (u32, Bar)> {
-        self.model().bar_iter()
+    fn bar_repo(&self) -> &Store<u32, Bar, ModelChangeMetadata> {
+        self.model().bar_repo()
     }
 
     #[inline]
-    fn tempo_iter(&self) -> Iter<'_, (u32, Tempo)> {
-        self.model().tempo_iter()
+    fn tempo_repo(&self) -> &Store<u32, Tempo, ModelChangeMetadata> {
+        self.model().tempo_repo()
     }
 
     #[inline]
-    fn soft_iter(&self) -> Iter<'_, (u32, CtrlChg)> {
-        self.model().soft_iter()
+    fn soft_repo(&self) -> &Store<u32, CtrlChg, ModelChangeMetadata> {
+        self.model().soft_repo()
     }
 
     #[inline]
-    fn dumper_iter(&self) -> Iter<'_, (u32, CtrlChg)> {
-        self.model().dumper_iter()
+    fn dumper_repo(&self) -> &Store<u32, CtrlChg, ModelChangeMetadata> {
+        self.model().dumper_repo()
     }
 }   
 
