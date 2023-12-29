@@ -1,4 +1,6 @@
+use std::collections::btree_map;
 use std::rc::Rc;
+use std::slice::Iter;
 
 use klavier_helper::bag_store::{BagStore, BagStoreEvent};
 use klavier_helper::store::{Store, StoreEvent};
@@ -72,15 +74,10 @@ pub struct ProjectImpl {
     rhythm: Rhythm,
     key: Key,
     grid: Grid,
-    
     note_repo: BagStore<u32, Rc<Note>, ModelChangeMetadata>, // by start tick.
-    
     bar_repo: Store<u32, Bar, ModelChangeMetadata>,
-    
     tempo_repo: Store<u32, Tempo, ModelChangeMetadata>,
-    
     dumper_repo: Store<u32, CtrlChg, ModelChangeMetadata>,
-    
     soft_repo: Store<u32, CtrlChg, ModelChangeMetadata>,
 }
 
@@ -341,6 +338,32 @@ impl ProjectImpl {
         }
         replenished_bars
     }
+
+    #[inline]
+    fn note_iter_vec(&self) -> btree_map::Iter<'_, u32, Vec<Rc<Note>>> {
+        self.note_repo.iter_vec()
+    }
+
+    #[inline]
+    fn bar_iter(&self) -> Iter<'_, (u32, Bar)> {
+        self.bar_repo.iter()
+    }
+
+    #[inline]
+    fn tempo_iter(&self) -> Iter<'_, (u32, Tempo)> {
+        self.tempo_repo.iter()
+    }
+
+    #[inline]
+    fn soft_iter(&self) -> Iter<'_, (u32, CtrlChg)> {
+        self.soft_repo.iter()
+    }
+
+    #[inline]
+    fn dumper_iter(&self) -> Iter<'_, (u32, CtrlChg)> {
+        self.dumper_repo.iter()
+    }
+
 }
 
 pub fn tempo_at(tick: u32, store: &Store<u32, Tempo, ModelChangeMetadata>) -> TempoValue {
@@ -549,6 +572,11 @@ pub trait Project {
     fn location_to_tick(&self, loc: Location) -> Result<u32, LocationError>;
     fn tick_to_location(&self, tick: u32) -> Location;
     fn rhythm_at(&self, tick: u32) -> Rhythm;
+    fn note_iter_vec(&self) -> btree_map::Iter<'_, u32, Vec<Rc<Note>>>;
+    fn bar_iter(&self) -> Iter<'_, (u32, Bar)>;
+    fn tempo_iter(&self) -> Iter<'_, (u32, Tempo)>;
+    fn soft_iter(&self) -> Iter<'_, (u32, CtrlChg)>;
+    fn dumper_iter(&self) -> Iter<'_, (u32, CtrlChg)>;
 }
 
 impl Project for SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr> {
@@ -879,6 +907,31 @@ impl Project for SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr> {
     #[inline]
     fn rhythm_at(&self, tick: u32) -> Rhythm {
         self.model().rhythm_at(tick)
+    }
+
+    #[inline]
+    fn note_iter_vec(&self) -> btree_map::Iter<'_, u32, Vec<Rc<Note>>> {
+        self.model().note_iter_vec()
+    }
+
+    #[inline]
+    fn bar_iter(&self) -> Iter<'_, (u32, Bar)> {
+        self.model().bar_iter()
+    }
+
+    #[inline]
+    fn tempo_iter(&self) -> Iter<'_, (u32, Tempo)> {
+        self.model().tempo_iter()
+    }
+
+    #[inline]
+    fn soft_iter(&self) -> Iter<'_, (u32, CtrlChg)> {
+        self.model().soft_iter()
+    }
+
+    #[inline]
+    fn dumper_iter(&self) -> Iter<'_, (u32, CtrlChg)> {
+        self.model().dumper_iter()
     }
 }   
 
