@@ -14,6 +14,12 @@ pub struct Trimmer {
     sum: i32,
 }
 
+impl Default for Trimmer {
+    fn default() -> Self {
+        Self::ZERO
+    }
+}
+
 impl From<TrimmerSerializedForm> for Trimmer {
     fn from(from: TrimmerSerializedForm) -> Self {
         Self::from_array(from.values)
@@ -119,6 +125,12 @@ pub struct RateTrimmer {
     values: [PercentU16; 4],
     #[serde(skip)]
     sum: PercentU16,
+}
+
+impl Default for RateTrimmer {
+    fn default() -> Self {
+        Self::ONE
+    }
 }
 
 impl From<RateTrimmerSerializedForm> for RateTrimmer {

@@ -372,7 +372,7 @@ mod tests {
         let store: Store<NanFreeF32, Bar, i32> = Store::new(false);
         let (start, mut z) = store.range(NanFreeF32::from(0.0) .. NanFreeF32::from(100.0));
         assert_eq!(start, 0);
-        assert_eq!(z.next(), None);
+        assert_eq!(z.len(), 0);
     }
 
     #[test]
@@ -382,7 +382,7 @@ mod tests {
         store.add(NanFreeF32::from(1.0), bar0, 0);
         let (start, mut z) = store.range(NanFreeF32::from(0.0) .. NanFreeF32::from(1.0));
         assert_eq!(start, 0);
-        assert_eq!(z.next(), None);
+        assert_eq!(z.len(), 0);
     }
     
     #[test]
@@ -392,13 +392,13 @@ mod tests {
         store.add(NanFreeF32::from(1.0), bar0, 0);
         let (start, mut z) = store.range(NanFreeF32::from(0.0) .. NanFreeF32::from(1.1));
         assert_eq!(start, 0);
-        assert_eq!(z.next(), Some(&(NanFreeF32::from(1.0), bar0)));
-        assert_eq!(z.next(), None);
+        assert_eq!(z.len(), 1);
+        assert_eq!(z[0], (NanFreeF32::from(1.0), bar0));
 
         let (start, mut z) = store.range(NanFreeF32::from(1.0) .. NanFreeF32::from(1.1));
         assert_eq!(start, 0);
-        assert_eq!(z.next(), Some(&(NanFreeF32::from(1.0), bar0)));
-        assert_eq!(z.next(), None);
+        assert_eq!(z.len(), 1);
+        assert_eq!(z[0], (NanFreeF32::from(1.0), bar0));
     }
 
     #[test]
@@ -408,7 +408,7 @@ mod tests {
         store.add(NanFreeF32::from(1.0), bar0, 0);
         let (start, mut z) = store.range(NanFreeF32::from(1.1) .. NanFreeF32::from(2.0));
         assert_eq!(start, 0);
-        assert_eq!(z.next(), None);
+        assert_eq!(z.len(), 0);
     }
 
     #[test]
@@ -418,7 +418,8 @@ mod tests {
         store.add(NanFreeF32::from(1.0), bar0, 0);
         let (start, mut z) = store.range(NanFreeF32::from(0.1) ..= NanFreeF32::from(1.0));
         assert_eq!(start, 0);
-        assert_eq!(z.next(), Some(&(NanFreeF32::from(1.0), bar0)));
+        assert_eq!(z.len(), 1);
+        assert_eq!(z[0], (NanFreeF32::from(1.0), bar0));
     }
 
     #[test]
@@ -433,10 +434,10 @@ mod tests {
 
         let (start, mut z) = store.range(NanFreeF32::from(0.0) ..= NanFreeF32::from(10.0));
         assert_eq!(start, 0);
-        assert_eq!(z.next(), Some(&(NanFreeF32::from(0.0), bar2)));
-        assert_eq!(z.next(), Some(&(NanFreeF32::from(2.0), bar0)));
-        assert_eq!(z.next(), Some(&(NanFreeF32::from(10.0), bar1)));
-        assert_eq!(z.next(), None);
+        assert_eq!(z.len(), 3);
+        assert_eq!(z[0], (NanFreeF32::from(0.0), bar2));
+        assert_eq!(z[1], (NanFreeF32::from(2.0), bar0));
+        assert_eq!(z[2], (NanFreeF32::from(10.0), bar1));
     }
 
     #[test]
@@ -468,23 +469,23 @@ mod tests {
         store.add(0.0.into(), bar2, 0);
         store.add(100.0.into(), bar3, 0);
 
-        let (start, mut z) = store.range(NanFreeF32::from(1.0) .. NanFreeF32::from(20.0));
+        let (start, z) = store.range(NanFreeF32::from(1.0) .. NanFreeF32::from(20.0));
         assert_eq!(start, 1);
-        assert_eq!(z.next(), Some(&(NanFreeF32::from(2.0), bar0)));
-        assert_eq!(z.next(), Some(&(NanFreeF32::from(10.0), bar1)));
-        assert_eq!(z.next(), None);
+        assert_eq!(z.len(), 2);
+        assert_eq!(z[0], (NanFreeF32::from(2.0), bar0));
+        assert_eq!(z[1], (NanFreeF32::from(10.0), bar1));
 
-        let (start, mut z) = store.range(NanFreeF32::from(10.0) .. NanFreeF32::from(200.0));
+        let (start, z) = store.range(NanFreeF32::from(10.0) .. NanFreeF32::from(200.0));
         assert_eq!(start, 2);
-        assert_eq!(z.next(), Some(&(NanFreeF32::from(10.0), bar1)));
-        assert_eq!(z.next(), Some(&(NanFreeF32::from(100.0), bar3)));
-        assert_eq!(z.next(), None);
+        assert_eq!(z.len(), 2);
+        assert_eq!(z[0], (NanFreeF32::from(10.0), bar1));
+        assert_eq!(z[1], (NanFreeF32::from(100.0), bar3));
 
-        let (start, mut z) = store.range(NanFreeF32::from(10.0) ..);
+        let (start, z) = store.range(NanFreeF32::from(10.0) ..);
         assert_eq!(start, 2);
-        assert_eq!(z.next(), Some(&(NanFreeF32::from(10.0), bar1)));
-        assert_eq!(z.next(), Some(&(NanFreeF32::from(100.0), bar3)));
-        assert_eq!(z.next(), None);
+        assert_eq!(z.len(), 2);
+        assert_eq!(z[0], (NanFreeF32::from(10.0), bar1));
+        assert_eq!(z[1], (NanFreeF32::from(100.0), bar3));
     }
 
     #[test]

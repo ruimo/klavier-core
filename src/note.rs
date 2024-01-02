@@ -3,6 +3,7 @@ use std::rc::Rc;
 
 use once_cell::unsync::Lazy;
 
+use crate::channel::Channel;
 use crate::clipper::Clipper;
 use crate::clipper;
 use crate::can_apply::CanApply;
@@ -36,6 +37,7 @@ pub struct Note {
     pub start_tick_trimmer: Trimmer,
     pub duration_trimmer: RateTrimmer,
     pub velocity_trimmer: Trimmer,
+    pub channel: Channel,
 }
 
 impl Note {
@@ -49,17 +51,19 @@ impl Note {
         start_tick_trimmer: Trimmer,
         duration_trimmer: RateTrimmer,
         velocity_trimmer: Trimmer,
+        channel: Channel,
     ) -> Self {
         Self {
-            base_start_tick: base_start_tick,
+            base_start_tick,
             pitch: pitch,
             duration: duration,
             tie: tie,
             tied: tied,
             base_velocity,
-            start_tick_trimmer: start_tick_trimmer,
-            duration_trimmer: duration_trimmer,
-            velocity_trimmer: velocity_trimmer,
+            start_tick_trimmer,
+            duration_trimmer,
+            velocity_trimmer,
+            channel
         }
     }
     
@@ -220,6 +224,23 @@ impl Note {
     }
 }
 
+impl Default for Note {
+    fn default() -> Self {
+        Self {
+            base_start_tick: Default::default(),
+            pitch: Default::default(),
+            duration: Default::default(),
+            tie: Default::default(),
+            tied: Default::default(),
+            base_velocity: Default::default(),
+            start_tick_trimmer: Default::default(),
+            duration_trimmer: Default::default(),
+            velocity_trimmer: Default::default(),
+            channel: Default::default(),
+        }
+    }
+}
+
 impl Note {
     pub const MIN_TICK: i32 = 0;
     pub const MAX_SCORE_OFFSET: i32 = 76;
@@ -258,7 +279,7 @@ impl HaveStartTick for Rc<Note> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{note::Note, pitch::{Pitch, self}, solfa::Solfa, octave::Octave, sharp_flat::SharpFlat, duration::{Duration, Numerator, Denominator, Dots}, trimmer::{Trimmer, RateTrimmer}, velocity::Velocity};
+    use crate::{note::Note, pitch::{Pitch, self}, solfa::Solfa, octave::Octave, sharp_flat::SharpFlat, duration::{Duration, Numerator, Denominator, Dots}, trimmer::{Trimmer, RateTrimmer}, velocity::Velocity, channel::Channel};
     
     #[test]
     fn tick_len() {
@@ -272,6 +293,7 @@ mod tests {
             Trimmer::ZERO, // start_tick_trimmer
             RateTrimmer::new(1.0, 0.5, 2.0, 1.5), // duration_trimmer
             Trimmer::ZERO, // velocity_trimmer
+            Channel::default(),
         );
         assert_eq!(note.tick_len(), 720);
     }
@@ -288,6 +310,7 @@ mod tests {
             Trimmer::ZERO, // start_tick_trimmer
             RateTrimmer::new(1.0, 0.5, 2.0, 1.5), // duration_trimmer
             Trimmer::ZERO, // velocity_trimmer
+            Channel::default(),
         );
         assert!(note.up_score_offset().is_err());
         
@@ -301,6 +324,7 @@ mod tests {
             Trimmer::ZERO, // start_tick_trimmer
             RateTrimmer::new(1.0, 0.5, 2.0, 1.5), // duration_trimmer
             Trimmer::ZERO, // velocity_trimmer
+            Channel::default(),
         );
         assert_eq!(note.up_score_offset().unwrap().pitch, Pitch::new(Solfa::B, Octave::Oct1, SharpFlat::Null));
     }
@@ -317,6 +341,7 @@ mod tests {
             Trimmer::ZERO, // start_tick_trimmer
             RateTrimmer::new(1.0, 0.5, 2.0, 1.5), // duration_trimmer
             Trimmer::ZERO, // velocity_trimmer
+            Channel::default(),
         );
         assert_eq!(note.with_tick_added(10, true).unwrap().start_tick(), 133);
         assert_eq!(note.with_tick_added(-122, true).unwrap().start_tick(), 1);

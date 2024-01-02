@@ -1,4 +1,4 @@
-use crate::solfa::Solfa;
+use crate::{solfa::Solfa, key::Key};
 use crate::octave::Octave;
 use crate::sharp_flat::SharpFlat;
 use std::fmt::{self};
@@ -30,16 +30,22 @@ impl fmt::Display for PitchError {
 
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(from = "PitchSerializedForm")]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Pitch {
     solfa: Solfa,
     octave: Octave,
     sharp_flat: SharpFlat,
 
     #[serde(skip)]    
-    value: i8,
+    value: u8,
     #[serde(skip)]    
     score_offset: i8,
+}
+
+impl Default for Pitch {
+    fn default() -> Self {
+        DEFAULT
+    }
 }
 
 impl From<PitchSerializedForm> for Pitch {
@@ -60,24 +66,42 @@ pub const MIN_VALUE: i8 = 0;
 
 pub const MIN: Pitch = Pitch::new(Solfa::C, Octave::OctM2, SharpFlat::Null);
 pub const MAX: Pitch = Pitch::new(Solfa::G, Octave::Oct8, SharpFlat::Null);
+const DEFAULT: Pitch = Pitch::new(Solfa::A, Octave::Oct4, SharpFlat::Null);
 
 pub const MIN_SCORE_OFFSET: i32 = 0;
 pub const MAX_SCORE_OFFSET: i32 = 74;
 
 impl Pitch {
-    pub const fn new(solfa: Solfa, octave: Octave, sharp_flat: SharpFlat) -> Pitch {
+    pub const fn new(solfa: Solfa, octave: Octave, sharp_flat: SharpFlat) -> Self {
         match Self::value_of(solfa, octave, sharp_flat) {
             Err(_pe) => panic!("Logic error."),
             Ok(p) => p
         }
     }
 
-    pub const fn value(solfa: Solfa, octave: Octave, sharp_flat: SharpFlat) -> i32 {
+    pub fn apply_key(self, key: Key) -> Result<Self, PitchError> {
+        if self.sharp_flat == SharpFlat::Null {
+            match Key::SOLFAS.get(&key) {
+                Some(solfas) =>
+                    if solfas.contains(&self.solfa) {
+                        let sharp_flat = if key.is_flat() { SharpFlat::Flat } else { SharpFlat::Sharp };
+                        Pitch::value_of(self.solfa, self.octave, sharp_flat)
+                    } else {
+                        Ok(self)
+                    }
+                None => Ok(self)
+            }
+        } else {
+            Ok(self)
+        }
+    }
+
+    pub const fn to_value(solfa: Solfa, octave: Octave, sharp_flat: SharpFlat) -> i32 {
         solfa.pitch_offset() + (octave.value() + Octave::BIAS_VALUE) * 12 + sharp_flat.offset()
     }
 
-    pub const fn value_of(solfa: Solfa, octave: Octave, sharp_flat: SharpFlat) -> Result<Pitch, PitchError> {
-        let v: i32 = Self::value(solfa, octave, sharp_flat);
+    pub const fn value_of(solfa: Solfa, octave: Octave, sharp_flat: SharpFlat) -> Result<Self, PitchError> {
+        let v: i32 = Self::to_value(solfa, octave, sharp_flat);
         if v < (MIN_VALUE as i32) {
             Err(PitchError::TooLow(solfa, octave, sharp_flat, v))
         } else if (MAX_VALUE as i32) < v {
@@ -89,14 +113,14 @@ impl Pitch {
                     solfa: solfa,
                     octave: octave,
                     sharp_flat: sharp_flat,
-                    value: v as i8,
+                    value: v as u8,
                     score_offset: so
                 }
             )
         }
     }
 
-    pub fn toggle_sharp(self) -> Result<Pitch, PitchError> {
+    pub fn toggle_sharp(self) -> Result<Self, PitchError> {
         let sharp_flat = match self.sharp_flat {
             SharpFlat::Sharp => SharpFlat::DoubleSharp,
             SharpFlat::DoubleSharp => SharpFlat::Null,
@@ -105,7 +129,7 @@ impl Pitch {
         Self::value_of(self.solfa, self.octave, sharp_flat)
     }
 
-    pub fn toggle_flat(self) -> Result<Pitch, PitchError> {
+    pub fn toggle_flat(self) -> Result<Self, PitchError> {
         let sharp_flat = match self.sharp_flat {
             SharpFlat::Flat => SharpFlat::DoubleFlat,
             SharpFlat::DoubleFlat => SharpFlat::Null,
@@ -114,7 +138,7 @@ impl Pitch {
         Self::value_of(self.solfa, self.octave, sharp_flat)
     }
 
-    pub fn toggle_natural(self) -> Result<Pitch, PitchError> {
+    pub fn toggle_natural(self) -> Result<Self, PitchError> {
         let sharp_flat = match self.sharp_flat {
             SharpFlat::Natural => SharpFlat::Null,
             _ => SharpFlat::Natural
@@ -136,7 +160,7 @@ impl Pitch {
         Self::value_of(solfa, octave, SharpFlat::Null).unwrap()
     }
 
-    pub fn with_score_offset_delta(self, score_offset_delta: i32) -> Result<Pitch, PitchError> {
+    pub fn with_score_offset_delta(self, score_offset_delta: i32) -> Result<Self, PitchError> {
         let score_offset = self.score_offset as i32 + score_offset_delta;
         if score_offset < MIN_SCORE_OFFSET || MAX_SCORE_OFFSET < score_offset {
             return Err(PitchError::InvalidScoreOffset(score_offset));
@@ -154,13 +178,15 @@ impl Pitch {
         (solfa, octave)
     }
 
+    #[inline]
     pub const fn score_offset(self) -> i8 { self.score_offset }
 
+    #[inline]
     pub const fn sharp_flat(self) -> SharpFlat {
         self.sharp_flat
     }
 
-    pub fn up(self) -> Result<Pitch, PitchError> {
+    pub fn up(self) -> Result<Self, PitchError> {
         let mut solfa = self.solfa;
         let mut octave = self.octave;
 
@@ -177,7 +203,7 @@ impl Pitch {
         Self::value_of(solfa, octave, self.sharp_flat)
     }
 
-    pub fn down(self) -> Result<Pitch, PitchError> {
+    pub fn down(self) -> Result<Self, PitchError> {
         let mut solfa = self.solfa;
         let mut octave = self.octave;
 
@@ -194,17 +220,25 @@ impl Pitch {
         Self::value_of(solfa, octave, self.sharp_flat)
     }
 
+    #[inline]
     pub fn solfa(self) -> Solfa {
         self.solfa
     }
 
+    #[inline]
     pub fn octave(self) -> Octave {
         self.octave
+    }
+
+    #[inline]
+    pub fn value(self) -> u8 {
+        self.value
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::key::Key;
     use crate::pitch::MAX_SCORE_OFFSET;
     use crate::pitch::MIN_SCORE_OFFSET;
     use crate::pitch::Pitch;
@@ -359,5 +393,23 @@ mod tests {
         let expected = Pitch::new(Solfa::C, Octave::Oct2, SharpFlat::DoubleFlat);
         assert_eq!(pitch, expected);
         assert_eq!(pitch.score_offset, expected.score_offset);
+    }
+
+    #[test]
+    fn apply() {
+        let pitch = Pitch::new(Solfa::F, Octave::Oct1, SharpFlat::Null);
+        assert_eq!(pitch.apply_key(Key::SHARP_1).unwrap(), Pitch::new(Solfa::F, Octave::Oct1, SharpFlat::Sharp));
+
+        let pitch = Pitch::new(Solfa::F, Octave::Oct1, SharpFlat::Flat);
+        assert_eq!(pitch.apply_key(Key::SHARP_1).unwrap(), Pitch::new(Solfa::F, Octave::Oct1, SharpFlat::Flat));
+
+        let pitch = Pitch::new(Solfa::E, Octave::Oct1, SharpFlat::Null);
+        assert_eq!(pitch.apply_key(Key::FLAT_2).unwrap(), Pitch::new(Solfa::E, Octave::Oct1, SharpFlat::Flat));
+
+        let pitch = Pitch::new(Solfa::E, Octave::Oct1, SharpFlat::Sharp);
+        assert_eq!(pitch.apply_key(Key::FLAT_2).unwrap(), Pitch::new(Solfa::E, Octave::Oct1, SharpFlat::Sharp));
+
+        let pitch = Pitch::new(Solfa::F, Octave::Oct1, SharpFlat::Null);
+        assert_eq!(pitch.apply_key(Key::FLAT_2).unwrap(), Pitch::new(Solfa::F, Octave::Oct1, SharpFlat::Null));
     }
 }

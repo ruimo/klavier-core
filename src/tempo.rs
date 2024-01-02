@@ -11,6 +11,12 @@ pub const MAX_TEMPO: TempoValue = TempoValue(MAX_TEMPO_VALUE);
 #[serde(from="SerializedTempoValue")]
 pub struct TempoValue(u16);
 
+impl Default for TempoValue {
+    fn default() -> Self {
+        Self(120)
+    }
+}
+
 #[derive(serde::Deserialize)]
 struct SerializedTempoValue(u16);
 
@@ -73,6 +79,15 @@ impl TempoValue {
 pub struct Tempo {
     pub start_tick: u32,
     pub value: TempoValue,
+}
+
+impl Default for Tempo {
+    fn default() -> Self {
+        Self {
+            start_tick: 0,
+            value: Default::default()
+        }
+    }
 }
 
 impl Tempo {

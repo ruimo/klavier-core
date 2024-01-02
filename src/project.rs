@@ -918,7 +918,7 @@ mod tests {
     use std::rc::Rc;
     use klavier_helper::store::Store;
     use serdo::undo_store::{SqliteUndoStore, UndoStore};
-    use crate::{tempo::{Tempo, TempoValue}, project::{tempo_at, ProjectCmd, ProjectCmdErr, ModelChangeMetadata, ProjectStore, LocationError}, note::Note, solfa::Solfa, octave::Octave, sharp_flat::SharpFlat, pitch::Pitch, duration::{Duration, Numerator, Denominator, Dots}, velocity::Velocity, trimmer::{Trimmer, RateTrimmer}, bar::{Bar, RepeatSet}, location::Location, rhythm::Rhythm, ctrl_chg::CtrlChg, key::Key, grid::Grid, models::{Models, ModelChanges}};
+    use crate::{tempo::{Tempo, TempoValue}, project::{tempo_at, ProjectCmd, ProjectCmdErr, ModelChangeMetadata, ProjectStore, LocationError}, note::Note, solfa::Solfa, octave::Octave, sharp_flat::SharpFlat, pitch::Pitch, duration::{Duration, Numerator, Denominator, Dots}, velocity::Velocity, trimmer::{Trimmer, RateTrimmer}, bar::{Bar, RepeatSet}, location::Location, rhythm::Rhythm, ctrl_chg::CtrlChg, key::Key, grid::Grid, models::{Models, ModelChanges}, channel::Channel};
     use super::{DEFAULT_TEMPO, ProjectImpl};
 
     #[test]
@@ -956,7 +956,8 @@ mod tests {
             Velocity::new(64),
             Trimmer::ZERO,
             RateTrimmer::ONE,
-            Trimmer::ZERO
+            Trimmer::ZERO,
+            Channel::default(),
         );
         
         store.add_note(note, false);
@@ -1139,7 +1140,8 @@ mod tests {
             Duration::new(Numerator::Quarter, Denominator::from_value(2).unwrap(), Dots::ONE),
             false, false, Velocity::new(10), Trimmer::ZERO,
             RateTrimmer::new(1.0, 1.0, 1.0, 1.0),
-            Trimmer::ZERO
+            Trimmer::ZERO,
+            Channel::default(),
         );
         
         let end_tick0 = note0.base_start_tick + note0.tick_len();
@@ -1151,7 +1153,8 @@ mod tests {
             Duration::new(Numerator::Whole, Denominator::from_value(2).unwrap(), Dots::ONE),
             false, false, Velocity::new(10), Trimmer::ZERO,
             RateTrimmer::new(1.0, 1.0, 1.0, 1.0),
-            Trimmer::ZERO
+            Trimmer::ZERO,
+            Channel::default(),
         );
         
         store.add_note(note1.clone(), false);
@@ -1163,7 +1166,8 @@ mod tests {
                 Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
                 false, false, Velocity::new(10), Trimmer::ZERO,
                 RateTrimmer::new(1.0, 1.0, 1.0, 2.0),
-                Trimmer::ZERO
+                Trimmer::ZERO,
+                Channel::default(),
             ), false
         );
         
@@ -1184,7 +1188,8 @@ mod tests {
                 Duration::new(Numerator::Quarter, Denominator::from_value(2).unwrap(), Dots::ONE),
                 false, false, Velocity::new(10), Trimmer::ZERO,
                 RateTrimmer::new(1.0, 1.0, 1.0, 1.0),
-                Trimmer::ZERO
+                Trimmer::ZERO,
+                Channel::default(),
             ), false
         );
         assert_eq!(store.model().bar_repo().len(), 1);
@@ -1196,7 +1201,8 @@ mod tests {
                 Duration::new(Numerator::Whole, Denominator::from_value(2).unwrap(), Dots::ZERO),
                 false, false, Velocity::new(10), Trimmer::ZERO,
                 RateTrimmer::new(1.0, 1.0, 1.0, 1.0),
-                Trimmer::ZERO
+                Trimmer::ZERO,
+                Channel::default(),
             ), false
         );
 
@@ -1209,7 +1215,8 @@ mod tests {
                 Duration::new(Numerator::Whole, Denominator::from_value(2).unwrap(), Dots::ONE),
                 false, false, Velocity::new(10), Trimmer::ZERO,
                 RateTrimmer::new(1.0, 1.0, 1.0, 1.0),
-                Trimmer::ZERO
+                Trimmer::ZERO,
+                Channel::default(),
             ), false
         );
 
@@ -1226,22 +1233,22 @@ mod tests {
         assert_eq!(store.model().bar_repo().len(), 4);
         assert_eq!(store.model().bar_repo().peek_last().unwrap().0, 960 * 4);
         
-        store.add_dumper(CtrlChg::new(960 * 4, Velocity::new(20)), false);
+        store.add_dumper(CtrlChg::new(960 * 4, Velocity::new(20), Channel::default()), false);
 
         assert_eq!(store.model().bar_repo().len(), 4);
         assert_eq!(store.model().bar_repo().peek_last().unwrap().0, 960 * 4);
         
-        store.add_dumper(CtrlChg::new(960 * 4 + 1, Velocity::new(20)), false);
+        store.add_dumper(CtrlChg::new(960 * 4 + 1, Velocity::new(20), Channel::default()), false);
 
         assert_eq!(store.model().bar_repo().len(), 5);
         assert_eq!(store.model().bar_repo().peek_last().unwrap().0, 960 * 5);
         
-        store.add_soft(CtrlChg::new(960 * 5, Velocity::new(20)), false);
+        store.add_soft(CtrlChg::new(960 * 5, Velocity::new(20), Channel::default()), false);
 
         assert_eq!(store.model().bar_repo().len(), 5);
         assert_eq!(store.model().bar_repo().peek_last().unwrap().0, 960 * 5);
         
-        store.add_dumper(CtrlChg::new(960 * 5 + 1, Velocity::new(20)), false);
+        store.add_dumper(CtrlChg::new(960 * 5 + 1, Velocity::new(20), Channel::default()), false);
 
         assert_eq!(store.model().bar_repo().len(), 6);
         assert_eq!(store.model().bar_repo().peek_last().unwrap().0, 960 * 6);
@@ -1259,7 +1266,8 @@ mod tests {
             Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
             false, false,
             Velocity::new(64),
-            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO
+            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO,
+            Channel::default(),
         );
         store.add_note(note0.clone(), false);
         
@@ -1269,7 +1277,8 @@ mod tests {
             Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
             false, false,
             Velocity::new(64),
-            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO
+            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO,
+            Channel::default(),
         );
         store.add_note(note1.clone(), false);
         
@@ -1279,7 +1288,8 @@ mod tests {
             Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
             false, false,
             Velocity::new(64),
-            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO
+            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO,
+            Channel::default(),
         );
         store.add_note(note2.clone(), false);
         assert_eq!(store.model().note_repo().len(), 3);
@@ -1329,7 +1339,8 @@ mod tests {
             Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
             false, false,
             Velocity::new(64),
-            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO
+            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO,
+            Channel::default(),
         ));
         proj.note_repo.add(note0.start_tick(), note0.clone(), ModelChangeMetadata::new());
 
@@ -1421,7 +1432,8 @@ mod tests {
             Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
             false, false,
             Velocity::new(64),
-            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO
+            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO,
+            Channel::default(),
         );
         
         store.add_note(note0.clone(), false);
@@ -1488,7 +1500,7 @@ mod tests {
         dir.push("project");
         let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), None).unwrap();
         
-        let dumper = CtrlChg::new(200, Velocity::new(20));
+        let dumper = CtrlChg::new(200, Velocity::new(20), Channel::default());
         store.add_dumper(dumper, false);
         
         assert_eq!(store.model().dumper_repo.len(), 1);
@@ -1510,7 +1522,7 @@ mod tests {
         dir.push("project");
         let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), None).unwrap();
         
-        let soft = CtrlChg::new(200, Velocity::new(20));
+        let soft = CtrlChg::new(200, Velocity::new(20), Channel::default());
         store.add_soft(soft, false);
         
         assert_eq!(store.model().soft_repo.len(), 1);
@@ -1543,7 +1555,8 @@ mod tests {
             Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
             false, false,
             Velocity::new(64),
-            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO
+            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO,
+            Channel::default(),
         );
         store.add_note(note0.clone(), false);
         
@@ -1563,7 +1576,8 @@ mod tests {
             Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
             false, false,
             Velocity::new(64),
-            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO
+            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO,
+            Channel::default(),
         );
         
         let note2 = Note::new(
@@ -1572,7 +1586,8 @@ mod tests {
             Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
             false, false,
             Velocity::new(64),
-            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO
+            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO,
+            Channel::default(),
         );
         store.add_note(note0.clone(), false);
         store.add_note(note1.clone(), false);
@@ -1612,7 +1627,8 @@ mod tests {
             Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
             false, false,
             Velocity::new(64),
-            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO
+            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO,
+            Channel::default(),
         );
         let tempo0 = Tempo::new(200, 200);
         store.bulk_add(
@@ -1658,7 +1674,8 @@ mod tests {
             Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
             false, false,
             Velocity::new(64),
-            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO
+            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO,
+            Channel::default(),
         );
 
         let tempo0 = Tempo::new(200, 200);
@@ -1693,7 +1710,8 @@ mod tests {
             Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
             false, false,
             Velocity::new(64),
-            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO
+            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO,
+            Channel::default(),
         );
         let note01 = Note::new(
             101,
@@ -1701,7 +1719,8 @@ mod tests {
             Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
             false, false,
             Velocity::new(64),
-            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO
+            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO,
+            Channel::default(),
         );
         let tempo0 = Tempo::new(200, 200);
         store.bulk_add(

@@ -17,7 +17,7 @@ impl fmt::Display for OctaveError {
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum Octave {
     OctM2, OctM1, Oct0, Oct1, Oct2, Oct3, Oct4, Oct5, Oct6, Oct7, Oct8,
 }

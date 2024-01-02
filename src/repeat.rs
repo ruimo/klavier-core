@@ -25,6 +25,31 @@ impl Chunk {
   pub fn end_tick(self) -> u32 {
     self.end_tick
   }
+
+  pub fn optimise(chunks: &[Chunk]) -> Vec<Chunk> {
+    let mut ret: Vec<Chunk> = vec![];
+    let mut z = chunks.iter();
+    let mut cur = match z.next() {
+      None => return ret,
+      Some(c) => *c,
+    };
+
+    for next in z {
+      if cur.end_tick == next.start_tick {
+        cur.end_tick = next.end_tick;
+      } else {
+        ret.push(cur);
+        cur = *next;
+      }
+    }
+
+    ret.push(cur);
+    ret
+  }
+
+pub fn len(self) -> u32 {
+    self.end_tick - self.start_tick()
+}
 }
 
 pub trait Region: std::fmt::Debug {
@@ -497,6 +522,11 @@ mod tests {
     assert_eq!(chunks[0], Chunk::new(0, 100));
     assert_eq!(chunks[1], Chunk::new(0, 100));
     assert_eq!(chunks[2], Chunk::new(100, u32::MAX));
+
+    let chunks = Chunk::optimise(&chunks);
+    assert_eq!(chunks.len(), 2);
+    assert_eq!(chunks[0], Chunk::new(0, 100));
+    assert_eq!(chunks[1], Chunk::new(0, u32::MAX));
   }
 
   // 0    100   200
@@ -534,6 +564,11 @@ mod tests {
     assert_eq!(chunks[1], Chunk::new(100, 200));
     assert_eq!(chunks[2], Chunk::new(100, 200));
     assert_eq!(chunks[3], Chunk::new(200, u32::MAX));
+
+    let chunks = Chunk::optimise(&chunks);
+    assert_eq!(chunks.len(), 2);
+    assert_eq!(chunks[0], Chunk::new(0, 200));
+    assert_eq!(chunks[1], Chunk::new(100, u32::MAX));
   }
 
   // 0    50          200
@@ -555,6 +590,11 @@ mod tests {
     assert_eq!(chunks[1], Chunk::new(50, 200));
     assert_eq!(chunks[2], Chunk::new(50, 200));
     assert_eq!(chunks[3], Chunk::new(200, u32::MAX));
+
+    let chunks = Chunk::optimise(&chunks);
+    assert_eq!(chunks.len(), 2);
+    assert_eq!(chunks[0], Chunk::new(0, 200));
+    assert_eq!(chunks[1], Chunk::new(50, u32::MAX));
   }
 
   // 0     50       100       150
@@ -578,6 +618,12 @@ mod tests {
     assert_eq!(chunks[2], Chunk::new(0, 50));
     assert_eq!(chunks[3], Chunk::new(100, 150));
     assert_eq!(chunks[4], Chunk::new(150, u32::MAX));
+
+    let chunks = Chunk::optimise(&chunks);
+    assert_eq!(chunks.len(), 3);
+    assert_eq!(chunks[0], Chunk::new(0, 100));
+    assert_eq!(chunks[1], Chunk::new(0, 50));
+    assert_eq!(chunks[2], Chunk::new(100, u32::MAX));
   }
 
   // 0    100        200        350       500        650
@@ -603,6 +649,12 @@ mod tests {
     assert_eq!(chunks[2], Chunk::new(0, 100));
     assert_eq!(chunks[3], Chunk::new(350, 650));
     assert_eq!(chunks[4], Chunk::new(650, u32::MAX));
+
+    let chunks = Chunk::optimise(&chunks);
+    assert_eq!(chunks.len(), 3);
+    assert_eq!(chunks[0], Chunk::new(0, 350));
+    assert_eq!(chunks[1], Chunk::new(0, 100));
+    assert_eq!(chunks[2], Chunk::new(350, u32::MAX));
   }
 
   // Non auftakt.
@@ -621,6 +673,11 @@ mod tests {
 
     let (region, warnings) = render_region(Rhythm::new(2, 4), bars.iter()).unwrap();
     let chunks = region.to_chunks();
+    assert_eq!(chunks.len(), 2);
+    assert_eq!(chunks[0], Chunk::new(0, 1440));
+    assert_eq!(chunks[1], Chunk::new(0, 480));
+
+    let chunks = Chunk::optimise(&chunks);
     assert_eq!(chunks.len(), 2);
     assert_eq!(chunks[0], Chunk::new(0, 1440));
     assert_eq!(chunks[1], Chunk::new(0, 480));
@@ -653,6 +710,15 @@ mod tests {
     assert_eq!(chunks[4], Chunk::new(1030, 1280));
     assert_eq!(chunks[5], Chunk::new(0, 480));
     assert_eq!(chunks[6], Chunk::new(730, 1030));
+
+    let chunks = Chunk::optimise(&chunks);
+    assert_eq!(chunks.len(), 5);
+    assert_eq!(chunks[0], Chunk::new(0, 730));
+    assert_eq!(chunks[1], Chunk::new(0, 480));
+    assert_eq!(chunks[2], Chunk::new(730, 1280));
+    assert_eq!(chunks[3], Chunk::new(0, 480));
+    assert_eq!(chunks[4], Chunk::new(730, 1030));
+
   }
 
   // 0 480    530        600   1080 
@@ -670,8 +736,8 @@ mod tests {
 
     let (region, warnings) = render_region(Rhythm::new(2, 4), bars.iter()).unwrap();
     let chunks = region.to_chunks();
-    assert_eq!(chunks.len(), 9);
 
+    assert_eq!(chunks.len(), 9);
     assert_eq!(chunks[0], Chunk::new(0, 480));
     assert_eq!(chunks[1], Chunk::new(480, 530));
     assert_eq!(chunks[2], Chunk::new(480, 530));
@@ -681,6 +747,14 @@ mod tests {
     assert_eq!(chunks[6], Chunk::new(600, 1080));
     assert_eq!(chunks[7], Chunk::new(0, 480));
     assert_eq!(chunks[8], Chunk::new(480, 530));
+
+    let chunks = Chunk::optimise(&chunks);
+    assert_eq!(chunks.len(), 5);
+    assert_eq!(chunks[0], Chunk::new(0, 530));
+    assert_eq!(chunks[1], Chunk::new(480, 600));
+    assert_eq!(chunks[2], Chunk::new(530, 1080));
+    assert_eq!(chunks[3], Chunk::new(600, 1080));
+    assert_eq!(chunks[4], Chunk::new(0, 530));
   }
 
   // 0 50   100 150  200  250  300 350  400 450
@@ -704,8 +778,8 @@ mod tests {
 
     let (region, warnings) = render_region(Rhythm::new(2, 4), bars.iter()).unwrap();
     let chunks = region.to_chunks();
-    assert_eq!(chunks.len(), 10);
 
+    assert_eq!(chunks.len(), 10);
     assert_eq!(chunks[0], Chunk::new(0, 50));
     assert_eq!(chunks[1], Chunk::new(50, 150));
     assert_eq!(chunks[2], Chunk::new(150, 200));
@@ -716,6 +790,14 @@ mod tests {
     assert_eq!(chunks[7], Chunk::new(250, 350));
     assert_eq!(chunks[8], Chunk::new(400, 450));
     assert_eq!(chunks[9], Chunk::new(450, u32::MAX));
+
+    let chunks = Chunk::optimise(&chunks);
+    assert_eq!(chunks.len(), 5);
+    assert_eq!(chunks[0], Chunk::new(0, 200));
+    assert_eq!(chunks[1], Chunk::new(50, 150));
+    assert_eq!(chunks[2], Chunk::new(200, 400));
+    assert_eq!(chunks[3], Chunk::new(250, 350));
+    assert_eq!(chunks[4], Chunk::new(400, u32::MAX));
   }
 
   // 0 50   100 150  200  250  300  350  400 450 500 550 600
@@ -742,8 +824,8 @@ mod tests {
 
     let (region, warnings) = render_region(Rhythm::new(2, 4), bars.iter()).unwrap();
     let chunks = region.to_chunks();
-    assert_eq!(chunks.len(), 11);
 
+    assert_eq!(chunks.len(), 11);
     assert_eq!(chunks[0], Chunk::new(0, 50));
     assert_eq!(chunks[1], Chunk::new(50, 150));
     assert_eq!(chunks[2], Chunk::new(150, 200));
@@ -755,6 +837,15 @@ mod tests {
     assert_eq!(chunks[8], Chunk::new(300, 400));
     assert_eq!(chunks[9], Chunk::new(500, 550));
     assert_eq!(chunks[10], Chunk::new(550, u32::MAX));
+
+    let chunks = Chunk::optimise(&chunks);
+    assert_eq!(chunks.len(), 5);
+    assert_eq!(chunks[0], Chunk::new(0, 200));
+    assert_eq!(chunks[1], Chunk::new(50, 150));
+    assert_eq!(chunks[2], Chunk::new(200, 500));
+    assert_eq!(chunks[3], Chunk::new(300, 400));
+    assert_eq!(chunks[4], Chunk::new(500, u32::MAX));
+
   }
 
   // 0 240  320 370  420  470  520  570  620 670     720 770 820  870 920 970
@@ -784,8 +875,8 @@ mod tests {
 
     let (region, warnings) = render_region(Rhythm::new(2, 4), bars.iter()).unwrap();
     let chunks = region.to_chunks();
-    assert_eq!(chunks.len(), 20);
 
+    assert_eq!(chunks.len(), 20);
     let mut z = chunks.iter();
     assert_eq!(*z.next().unwrap(), Chunk::new(0, 240));
     assert_eq!(*z.next().unwrap(), Chunk::new(240, 370));
@@ -809,6 +900,20 @@ mod tests {
     assert_eq!(*z.next().unwrap(), Chunk::new(420, 470));
     assert_eq!(*z.next().unwrap(), Chunk::new(470, 520));
     assert_eq!(*z.next().unwrap(), Chunk::new(520, 620));
+    assert_eq!(*z.next().unwrap(), Chunk::new(670, 720));
+    assert_eq!(z.next(), None);
+
+    let chunks = Chunk::optimise(&chunks);
+    assert_eq!(chunks.len(), 9);
+    let mut z = chunks.iter();
+    assert_eq!(*z.next().unwrap(), Chunk::new(0, 420));
+    assert_eq!(*z.next().unwrap(), Chunk::new(240, 370));
+    assert_eq!(*z.next().unwrap(), Chunk::new(420, 670));
+    assert_eq!(*z.next().unwrap(), Chunk::new(520, 620));
+    assert_eq!(*z.next().unwrap(), Chunk::new(670, 920));
+    assert_eq!(*z.next().unwrap(), Chunk::new(770, 970));
+    assert_eq!(*z.next().unwrap(), Chunk::new(0, 370));
+    assert_eq!(*z.next().unwrap(), Chunk::new(420, 620));
     assert_eq!(*z.next().unwrap(), Chunk::new(670, 720));
     assert_eq!(z.next(), None);
   }
@@ -837,6 +942,13 @@ mod tests {
     assert_eq!(*z.next().unwrap(), Chunk::new(200, 300));
     assert_eq!(*z.next().unwrap(), Chunk::new(300, u32::MAX));
     assert_eq!(z.next(), None);
+
+    let chunks = Chunk::optimise(&chunks);
+    let mut z = chunks.iter();
+    assert_eq!(*z.next().unwrap(), Chunk::new(0, 200));
+    assert_eq!(*z.next().unwrap(), Chunk::new(0, 300));
+    assert_eq!(*z.next().unwrap(), Chunk::new(200, u32::MAX));
+    assert_eq!(z.next(), None);
   }
 
   // 0   120          270          370
@@ -859,6 +971,14 @@ mod tests {
     assert_eq!(*z.next().unwrap(), Chunk::new(0, 270));
     assert_eq!(*z.next().unwrap(), Chunk::new(0, 270));
     assert_eq!(*z.next().unwrap(), Chunk::new(270, 370));
+    assert_eq!(*z.next().unwrap(), Chunk::new(270, 370));
+    assert_eq!(*z.next().unwrap(), Chunk::new(0, 270));
+    assert_eq!(z.next(), None);
+
+    let chunks = Chunk::optimise(&chunks);
+    let mut z = chunks.iter();
+    assert_eq!(*z.next().unwrap(), Chunk::new(0, 270));
+    assert_eq!(*z.next().unwrap(), Chunk::new(0, 370));
     assert_eq!(*z.next().unwrap(), Chunk::new(270, 370));
     assert_eq!(*z.next().unwrap(), Chunk::new(0, 270));
     assert_eq!(z.next(), None);
@@ -892,6 +1012,15 @@ mod tests {
     assert_eq!(*z.next().unwrap(), Chunk::new(0, 120));
     assert_eq!(*z.next().unwrap(), Chunk::new(120, 170));
     assert_eq!(z.next(), None);
+
+    let chunks = Chunk::optimise(&chunks);
+    let mut z = chunks.iter();
+    assert_eq!(*z.next().unwrap(), Chunk::new(0, 170));
+    assert_eq!(*z.next().unwrap(), Chunk::new(120, 270));
+    assert_eq!(*z.next().unwrap(), Chunk::new(170, 370));
+    assert_eq!(*z.next().unwrap(), Chunk::new(270, 370));
+    assert_eq!(*z.next().unwrap(), Chunk::new(0, 170));
+    assert_eq!(z.next(), None);
   }
 
   // 0 120 170  270  370    470
@@ -920,6 +1049,13 @@ mod tests {
     assert_eq!(*z.next().unwrap(), Chunk::new(170, 370));
     assert_eq!(*z.next().unwrap(), Chunk::new(370, u32::MAX));
     assert_eq!(z.next(), None);
+
+    let chunks = Chunk::optimise(&chunks);
+    let mut z = chunks.iter();
+    assert_eq!(*z.next().unwrap(), Chunk::new(0, 370));
+    assert_eq!(*z.next().unwrap(), Chunk::new(170, 370));
+    assert_eq!(*z.next().unwrap(), Chunk::new(0, u32::MAX));
+    assert_eq!(z.next(), None);
   }
 
   // 0   120   200         270          370
@@ -943,6 +1079,14 @@ mod tests {
     assert_eq!(*z.next().unwrap(), Chunk::new(0, 270));
     assert_eq!(*z.next().unwrap(), Chunk::new(0, 270));
     assert_eq!(*z.next().unwrap(), Chunk::new(270, 370));
+    assert_eq!(*z.next().unwrap(), Chunk::new(270, 370));
+    assert_eq!(*z.next().unwrap(), Chunk::new(200, 270));
+    assert_eq!(z.next(), None);
+
+    let chunks = Chunk::optimise(&chunks);
+    let mut z = chunks.iter();
+    assert_eq!(*z.next().unwrap(), Chunk::new(0, 270));
+    assert_eq!(*z.next().unwrap(), Chunk::new(0, 370));
     assert_eq!(*z.next().unwrap(), Chunk::new(270, 370));
     assert_eq!(*z.next().unwrap(), Chunk::new(200, 270));
     assert_eq!(z.next(), None);
@@ -972,6 +1116,15 @@ mod tests {
     assert_eq!(*z.next().unwrap(), Chunk::new(0, 270));
     assert_eq!(*z.next().unwrap(), Chunk::new(270, 370));
     assert_eq!(*z.next().unwrap(), Chunk::new(370, 470));
+    assert_eq!(*z.next().unwrap(), Chunk::new(270, 370));
+    assert_eq!(*z.next().unwrap(), Chunk::new(470, 570));
+    assert_eq!(*z.next().unwrap(), Chunk::new(200, 270));
+    assert_eq!(z.next(), None);
+
+    let chunks = Chunk::optimise(&chunks);
+    let mut z = chunks.iter();
+    assert_eq!(*z.next().unwrap(), Chunk::new(0, 270));
+    assert_eq!(*z.next().unwrap(), Chunk::new(0, 470));
     assert_eq!(*z.next().unwrap(), Chunk::new(270, 370));
     assert_eq!(*z.next().unwrap(), Chunk::new(470, 570));
     assert_eq!(*z.next().unwrap(), Chunk::new(200, 270));
@@ -1006,6 +1159,14 @@ mod tests {
     assert_eq!(*z.next().unwrap(), Chunk::new(270, 370));
     assert_eq!(*z.next().unwrap(), Chunk::new(570, u32::MAX));
     assert_eq!(z.next(), None);
+
+    let chunks = Chunk::optimise(&chunks);
+    let mut z = chunks.iter();
+    assert_eq!(*z.next().unwrap(), Chunk::new(0, 270));
+    assert_eq!(*z.next().unwrap(), Chunk::new(0, 670));
+    assert_eq!(*z.next().unwrap(), Chunk::new(200, 370));
+    assert_eq!(*z.next().unwrap(), Chunk::new(570, u32::MAX));
+    assert_eq!(z.next(), None);
   }    
 
   // 0   120   200         270  370     470  570     670   770
@@ -1037,6 +1198,14 @@ mod tests {
     assert_eq!(*z.next().unwrap(), Chunk::new(270, 370));
     assert_eq!(*z.next().unwrap(), Chunk::new(570, 670));
     assert_eq!(z.next(), None);
+
+    let chunks = Chunk::optimise(&chunks);
+    let mut z = chunks.iter();
+    assert_eq!(*z.next().unwrap(), Chunk::new(0, 270));
+    assert_eq!(*z.next().unwrap(), Chunk::new(0, 770));
+    assert_eq!(*z.next().unwrap(), Chunk::new(200, 370));
+    assert_eq!(*z.next().unwrap(), Chunk::new(570, 670));
+    assert_eq!(z.next(), None);
   }    
 
   // 0   120   200         270  370     470 570  670
@@ -1065,6 +1234,14 @@ mod tests {
     assert_eq!(*z.next().unwrap(), Chunk::new(270, 570));
     assert_eq!(*z.next().unwrap(), Chunk::new(200, 270));
     assert_eq!(*z.next().unwrap(), Chunk::new(270, 370));
+    assert_eq!(*z.next().unwrap(), Chunk::new(670, u32::MAX));
+    assert_eq!(z.next(), None);
+
+    let chunks = Chunk::optimise(&chunks);
+    let mut z = chunks.iter();
+    assert_eq!(*z.next().unwrap(), Chunk::new(0, 270));
+    assert_eq!(*z.next().unwrap(), Chunk::new(0, 570));
+    assert_eq!(*z.next().unwrap(), Chunk::new(200, 370));
     assert_eq!(*z.next().unwrap(), Chunk::new(670, u32::MAX));
     assert_eq!(z.next(), None);
   }    
@@ -1124,5 +1301,21 @@ mod tests {
     assert_eq!(chunks.len(), 1);
     assert_eq!(chunks[0], Chunk { start_tick: 100, end_tick: 200 });
     Ok(())
+  }
+
+  //   200      400
+  // A | Fine B | D.C.
+  // This is assumed auftakt.
+  // A B
+  #[test]
+  fn dc_goes_to_fine() {
+    let bars = vec![
+      Bar::new(200, None, None, repeat_set!(Repeat::Fine)),
+      Bar::new(400, None, None, repeat_set!(Repeat::Dc)),
+    ];
+
+    let (region, warnings) = render_region(Rhythm::new(1, 4), bars.iter()).unwrap();
+    let chunks = region.to_chunks();
+    assert_eq!(chunks.len(), 1);
   }
 }

@@ -1,7 +1,13 @@
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(from="Serialized")]
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub struct Velocity(u8);
+
+impl Default for Velocity {
+    fn default() -> Self {
+        Self(64)
+    }
+}
 
 pub const MIN_VALUE: u8 = 0;
 pub const MAX_VALUE: u8 = 127;

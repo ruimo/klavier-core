@@ -196,7 +196,13 @@ impl GlobalRepeatBuilder {
         Some([coda_from, coda_to]) => vec![
           (start_tick, coda_from - 1), (coda_to, end_tick - 1)
         ],
-        None => vec![(start_tick, end_tick - 1)]
+        None => {
+          if end_tick <= start_tick {
+            vec![]
+          } else {
+            vec![(start_tick, end_tick - 1)]
+          }
+        }
     }.to_interval_set()
   }
 

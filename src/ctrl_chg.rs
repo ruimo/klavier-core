@@ -1,3 +1,4 @@
+use crate::channel::Channel;
 use super::{note::TickError, have_start_tick::{HaveBaseStartTick, HaveStartTick}, velocity::Velocity};
 
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -5,11 +6,12 @@ use super::{note::TickError, have_start_tick::{HaveBaseStartTick, HaveStartTick}
 pub struct CtrlChg {
     pub start_tick: u32,
     pub velocity: Velocity,
+    pub channel: Channel,
 }
 
 impl CtrlChg {
-    pub fn new(start_tick: u32, velocity: Velocity) -> Self {
-        Self { start_tick, velocity }
+    pub fn new(start_tick: u32, velocity: Velocity, channel: Channel) -> Self {
+        Self { start_tick, velocity, channel }
     }
     
     pub fn drag(&self, tick_delta: i32) -> Self {
@@ -48,6 +50,7 @@ impl HaveStartTick for CtrlChg {
 
 #[cfg(test)]
 mod tests {
+    use crate::channel::Channel;
     use crate::ctrl_chg::CtrlChg;
     use crate::velocity::Velocity;
     use serde_json::Value;
@@ -55,14 +58,16 @@ mod tests {
 
     #[test]
     fn can_deserialize_ctrl_chg() {
-        let tempo: CtrlChg = serde_json::from_str(r#"
+        let ctrl_chg: CtrlChg = serde_json::from_str(r#"
             {
                 "start_tick": 123,
-                "velocity": 64
+                "velocity": 64,
+                "channel": 0
             }"#).unwrap();
-        assert_eq!(tempo, CtrlChg {
+        assert_eq!(ctrl_chg, CtrlChg {
             start_tick: 123,
-            velocity: Velocity::new(64)
+            velocity: Velocity::new(64),
+            channel: Channel::default(),
         });
     }
 
@@ -70,14 +75,16 @@ mod tests {
     fn can_serialize_ctrl_chg() {
         let json_str = serde_json::to_string(&CtrlChg {
             start_tick: 123,
-            velocity: Velocity::new(64)
+            velocity: Velocity::new(64),
+            channel: Channel::new(1),
         }).unwrap();
         let json: Value = serde_json::from_str(&json_str).unwrap();
         assert_eq!(
             json,
             json!({
                 "start_tick": 123,
-                "velocity": 64
+                "velocity": 64,
+                "channel": 1
             })
         );
     }

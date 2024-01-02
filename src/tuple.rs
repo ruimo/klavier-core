@@ -1,6 +1,6 @@
 use std::{rc::Rc, ops::Index, collections::HashSet};
 
-use super::{note::{Note}, have_start_tick::HaveBaseStartTick, duration::{Duration, Denominator}};
+use super::{note::Note, have_start_tick::HaveBaseStartTick, duration::{Duration, Denominator}};
 use gcd::Gcd;
 
 pub fn tuplize(mut notes: Vec<Rc<Note>>) -> Vec<Rc<Note>> {
@@ -191,7 +191,7 @@ fn total_tick_unit(elements: &Vec<TupleElem>) -> (u32, u32) {
 #[cfg(test)]
 mod tests {
     use std::rc::Rc;
-    use crate::{note::Note, pitch::Pitch, solfa::Solfa, octave::Octave, sharp_flat::SharpFlat, duration::{Duration, Numerator, Denominator, Dots}, trimmer::{Trimmer, RateTrimmer}, velocity::Velocity};
+    use crate::{note::Note, pitch::Pitch, solfa::Solfa, octave::Octave, sharp_flat::SharpFlat, duration::{Duration, Numerator, Denominator, Dots}, trimmer::{Trimmer, RateTrimmer}, velocity::Velocity, channel::Channel};
     use super::{numerator_unit, tuplize};
 
     #[test]
@@ -201,7 +201,8 @@ mod tests {
             Pitch::new(Solfa::A, Octave::Oct3, SharpFlat::Null),
             Duration::new(Numerator::Quarter, Denominator::from_value(2).unwrap(), Dots::ZERO),
             false, false, Velocity::new(64),
-            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO
+            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO,
+            Channel::default(),
         ));
 
         let note1 = Rc::new(Note::new(
@@ -209,7 +210,8 @@ mod tests {
             Pitch::new(Solfa::A, Octave::Oct3, SharpFlat::Null),
             Duration::new(Numerator::Half, Denominator::from_value(2).unwrap(), Dots::ZERO),
             false, false, Velocity::new(64),
-            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO
+            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO,
+            Channel::default(),
         ));
 
         let note2 = Rc::new(Note::new(
@@ -217,7 +219,8 @@ mod tests {
             Pitch::new(Solfa::A, Octave::Oct3, SharpFlat::Null),
             Duration::new(Numerator::Quarter, Denominator::from_value(2).unwrap(), Dots::ZERO),
             false, false, Velocity::new(64),
-            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO
+            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO,
+            Channel::default(),
         ));
 
         let mut notes: [Rc<Note>; 3] = [note2.clone(), note1.clone(), note0.clone()];
@@ -266,7 +269,8 @@ mod tests {
         Rc::new(Note::new(
             tick, pitch, duration,
             false, false, Velocity::new(64),
-            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO
+            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO,
+            Channel::default(),
         ))
     }
 

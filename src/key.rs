@@ -1,5 +1,11 @@
+use std::collections::{HashMap, HashSet};
+
+use once_cell::unsync::Lazy;
+
+use crate::solfa::Solfa;
+
 #[derive(serde::Deserialize, serde::Serialize)]
-#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone, Hash)]
 pub struct Key(i8);
 
 impl Key {
@@ -19,8 +25,36 @@ impl Key {
     pub const FLAT_6: Key = Key(-6);
     pub const FLAT_7: Key = Key(-7);
 
+    pub const SOLFAS: Lazy<HashMap<Key, HashSet<Solfa>>> = Lazy::new(||
+        HashMap::from([
+            (Self::NONE, HashSet::from([])),
+            (Self::SHARP_1, HashSet::from([Solfa::F])),
+            (Self::SHARP_2, HashSet::from([Solfa::F, Solfa::C])),
+            (Self::SHARP_3, HashSet::from([Solfa::F, Solfa::C, Solfa::G])),
+            (Self::SHARP_4, HashSet::from([Solfa::F, Solfa::C, Solfa::G, Solfa::D])),
+            (Self::SHARP_5, HashSet::from([Solfa::F, Solfa::C, Solfa::G, Solfa::D, Solfa::A])),
+            (Self::SHARP_6, HashSet::from([Solfa::F, Solfa::C, Solfa::G, Solfa::D, Solfa::A, Solfa::E])),
+            (Self::SHARP_7, HashSet::from([Solfa::F, Solfa::C, Solfa::G, Solfa::D, Solfa::A, Solfa::E, Solfa::B])),
+            (Self::FLAT_1, HashSet::from([Solfa::B])),
+            (Self::FLAT_2, HashSet::from([Solfa::B, Solfa::E])),
+            (Self::FLAT_3, HashSet::from([Solfa::B, Solfa::E, Solfa::A])),
+            (Self::FLAT_4, HashSet::from([Solfa::B, Solfa::E, Solfa::A, Solfa::D])),
+            (Self::FLAT_5, HashSet::from([Solfa::B, Solfa::E, Solfa::A, Solfa::D, Solfa::G])),
+            (Self::FLAT_6, HashSet::from([Solfa::B, Solfa::E, Solfa::A, Solfa::D, Solfa::G, Solfa::C])),
+            (Self::FLAT_7, HashSet::from([Solfa::B, Solfa::E, Solfa::A, Solfa::D, Solfa::G, Solfa::C, Solfa::F])),
+        ])
+    );
+
     pub fn offset(self) -> i8 {
         self.0
+    }
+
+    pub fn is_flat(self) -> bool {
+        self.0 < 0
+    }
+
+    pub fn is_sharp(self) -> bool {
+        0 < self.0
     }
 }
 

@@ -1,7 +1,7 @@
 use std::{fmt, ops::{AddAssign, SubAssign}};
 
 #[derive(serde::Deserialize, serde::Serialize)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Solfa {
     C, D, E, F, G, A, B,
 }

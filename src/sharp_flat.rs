@@ -1,5 +1,5 @@
 #[derive(serde::Deserialize, serde::Serialize)]
-#[derive(Debug, PartialEq, Copy, Clone, Eq)]
+#[derive(Debug, PartialEq, Copy, Clone, Eq, Hash)]
 pub enum SharpFlat {
     Sharp,
     DoubleSharp,

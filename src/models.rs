@@ -208,7 +208,7 @@ impl ModelChanges {
 
 #[cfg(test)]
 mod clipboard_tests {
-    use crate::{models::{Models, FromClipboardTextErr}, note::Note, pitch::Pitch, solfa::Solfa, octave::Octave, sharp_flat::SharpFlat, duration::{self, Duration, Dots}, velocity::Velocity, trimmer::{Trimmer, RateTrimmer}, bar::{Bar, RepeatSet}, tempo::Tempo, ctrl_chg::CtrlChg};
+    use crate::{models::{Models, FromClipboardTextErr}, note::Note, pitch::Pitch, solfa::Solfa, octave::Octave, sharp_flat::SharpFlat, duration::{self, Duration, Dots}, velocity::Velocity, trimmer::{Trimmer, RateTrimmer}, bar::{Bar, RepeatSet}, tempo::Tempo, ctrl_chg::CtrlChg, channel::Channel};
 
     #[test]
     fn parse_empty() {
@@ -244,7 +244,8 @@ mod clipboard_tests {
             Duration::new(duration::Numerator::Quarter, duration::Denominator::from_value(2).unwrap(), Dots::ONE),
             false, false, Velocity::new(10), Trimmer::ZERO,
             RateTrimmer::new(1.0, 1.0, 1.0, 1.0),
-            Trimmer::ZERO
+            Trimmer::ZERO,
+            Channel::default(),
         );
 
         let bar = Bar::new(
@@ -272,7 +273,8 @@ mod clipboard_tests {
             Duration::new(duration::Numerator::Quarter, duration::Denominator::from_value(2).unwrap(), Dots::ONE),
             false, false, Velocity::new(10), Trimmer::ZERO,
             RateTrimmer::new(1.0, 1.0, 1.0, 1.0),
-            Trimmer::ZERO
+            Trimmer::ZERO,
+            Channel::default(),
         );
 
         let bar = Bar::new(
@@ -283,9 +285,9 @@ mod clipboard_tests {
         let tempo0 = Tempo::new(110, 200);
         let tempo1 = Tempo::new(114, 205);
             
-        let dumper = CtrlChg::new(120, Velocity::new(64));
+        let dumper = CtrlChg::new(120, Velocity::new(64), Channel::default());
 
-        let soft = CtrlChg::new(90, Velocity::new(64));
+        let soft = CtrlChg::new(90, Velocity::new(64), Channel::default());
 
         let models = Models {
             notes: vec![note],

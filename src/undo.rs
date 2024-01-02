@@ -1,5 +1,4 @@
-use std::{collections::{VecDeque, vec_deque::Iter}};
-
+use std::{collections::VecDeque};
 use crate::{models::{Models}, project::ModelChangeMetadata};
 
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
@@ -33,7 +32,7 @@ impl UndoStore {
     }
     
     #[allow(dead_code)]
-    pub fn iter(&self) -> Iter<'_, Undo> {
+    pub fn iter(&self) -> std::collections::vec_deque::Iter<'_, Undo> {
         self.store.iter()
     }
     
@@ -91,7 +90,7 @@ impl UndoStore {
 mod tests {
     use std::{rc::Rc};
 
-    use crate::{models::Models, note::Note, pitch::Pitch, solfa::Solfa, octave::Octave, sharp_flat::SharpFlat, duration::{Duration, Numerator, Denominator, Dots}, velocity::Velocity, trimmer::{Trimmer, RateTrimmer}, bar::{Bar, RepeatSet, Repeat}, undo::{UndoStore, Undo}, project::ModelChangeMetadata};
+    use crate::{models::Models, note::Note, pitch::Pitch, solfa::Solfa, octave::Octave, sharp_flat::SharpFlat, duration::{Duration, Numerator, Denominator, Dots}, velocity::Velocity, trimmer::{Trimmer, RateTrimmer}, bar::{Bar, RepeatSet, Repeat}, undo::{UndoStore, Undo}, project::ModelChangeMetadata, channel::Channel};
     
     fn test_models() -> [Models; 5] {
         let note0 = Rc::new(
@@ -105,6 +104,7 @@ mod tests {
                 Trimmer::ZERO, // start_tick_trimmer
                 RateTrimmer::new(1.0, 0.5, 2.0, 1.5), // duration_trimmer
                 Trimmer::ZERO, // velocity_trimmer
+                Channel::default(),
             )
         );
         let note1 = Rc::new(
@@ -118,6 +118,7 @@ mod tests {
                 Trimmer::ZERO, // start_tick_trimmer
                 RateTrimmer::new(1.0, 0.5, 2.0, 1.5), // duration_trimmer
                 Trimmer::ZERO, // velocity_trimmer
+                Channel::default(),
             )
         );
         let note2 = Rc::new(
@@ -131,6 +132,7 @@ mod tests {
                 Trimmer::ZERO, // start_tick_trimmer
                 RateTrimmer::new(1.0, 0.5, 2.0, 1.5), // duration_trimmer
                 Trimmer::ZERO, // velocity_trimmer
+                Channel::default(),
             )
         );
         let note3 = Rc::new(
@@ -144,6 +146,7 @@ mod tests {
                 Trimmer::ZERO, // start_tick_trimmer
                 RateTrimmer::new(1.0, 0.5, 2.0, 1.5), // duration_trimmer
                 Trimmer::ZERO, // velocity_trimmer
+                Channel::default(),
             )
         );
 

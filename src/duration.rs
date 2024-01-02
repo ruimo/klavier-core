@@ -13,6 +13,12 @@ pub enum Numerator {
     N128th,
 }
 
+impl Default for Numerator {
+    fn default() -> Self {
+        Self::Quarter
+    }
+}
+
 impl Numerator {
     pub const fn ord(self) -> u8 {
         match self {
@@ -47,6 +53,12 @@ impl Numerator {
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub struct Denominator(u8);
 
+impl Default for Denominator {
+    fn default() -> Self {
+        Self(2)
+    }
+}
+
 #[derive(serde::Deserialize)]
 struct SerializedDenominator(u8);
 
@@ -79,6 +91,12 @@ impl Denominator {
 #[derive(serde::Deserialize, serde::Serialize)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub struct Dots(u8);
+
+impl Default for Dots {
+    fn default() -> Self {
+        Self::ZERO
+    }
+}
 
 impl Dots {
     pub const ZERO: Dots = Dots(0);
@@ -117,6 +135,16 @@ pub struct Duration {
     pub numerator: Numerator,
     pub denominator: Denominator,
     pub dots: Dots,
+}
+
+impl Default for Duration {
+    fn default() -> Self {
+        Self {
+            numerator: Default::default(),
+            denominator: Default::default(),
+            dots: Default::default()
+        }
+    }
 }
 
 impl Duration {
