@@ -285,6 +285,22 @@ impl ProjectImpl {
         self.rhythm
     }
     
+    pub fn key_at(&self, tick: u32) -> Key {
+        let idx = match self.bar_repo.index(tick) {
+            Ok(t) => t,
+            Err(t) => if t == 0 { return self.key } else { t - 1 },
+        };
+        
+        for i in (0..=idx).rev() {
+            let bar = self.bar_repo[i].1;
+            if let Some(key) = bar.key {
+                return key;
+            }
+        }
+        
+        self.key
+    }
+
     /// Returns bar no(0 offset) and bar.
     #[inline]
     fn last_bar(&self) -> Option<(usize, Bar)> {
@@ -548,6 +564,7 @@ pub trait Project {
     fn location_to_tick(&self, loc: Location) -> Result<u32, LocationError>;
     fn tick_to_location(&self, tick: u32) -> Location;
     fn rhythm_at(&self, tick: u32) -> Rhythm;
+    fn key_at(&self, tick: u32) -> Key;
     fn note_repo(&self) -> &BagStore<u32, Rc<Note>, ModelChangeMetadata>;
     fn bar_repo(&self) -> &Store<u32, Bar, ModelChangeMetadata>;
     fn tempo_repo(&self) -> &Store<u32, Tempo, ModelChangeMetadata>;
@@ -883,6 +900,11 @@ impl Project for SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr> {
     #[inline]
     fn rhythm_at(&self, tick: u32) -> Rhythm {
         self.model().rhythm_at(tick)
+    }
+
+    #[inline]
+    fn key_at(&self, tick: u32) -> Key {
+        self.model().key_at(tick)
     }
 
     #[inline]
