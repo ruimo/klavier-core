@@ -534,7 +534,7 @@ mod tests {
         store.add(0.0.into(), bar2, 0);
 
         let bar3 = Bar::new(0, None, None, repeat_set!());
-        store.update(1, bar3);
+        store.update_at_idx(1, bar3, 0);
         assert_eq!(store[1], (2.0.into(), bar3));
     }
 
