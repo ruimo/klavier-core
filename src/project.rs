@@ -91,23 +91,18 @@ impl From<ExportedProject> for ProjectImpl {
     fn from(exported: ExportedProject) -> Self {
         let mut note_repo: BagStore<u32, Rc<Note>, ModelChangeMetadata> = BagStore::new(true);
         note_repo.bulk_add(exported.models.notes.into_iter().map(|n| (n.start_tick(), Rc::new(n))).collect(), ModelChangeMetadata::new());
-        note_repo.clear_events();
 
         let mut bar_repo: Store<u32, Bar, ModelChangeMetadata> = Store::new(true);
         bar_repo.bulk_add(exported.models.bars.into_iter().map(|b| (b.start_tick, b)).collect(), ModelChangeMetadata::new());
-        bar_repo.clear_events();
 
         let mut tempo_repo: Store<u32, Tempo, ModelChangeMetadata> = Store::new(true);
         tempo_repo.bulk_add(exported.models.tempos.into_iter().map(|t| (t.start_tick, t)).collect(), ModelChangeMetadata::new());
-        tempo_repo.clear_events();
 
         let mut dumper_repo: Store<u32, CtrlChg, ModelChangeMetadata> = Store::new(true);
         dumper_repo.bulk_add(exported.models.dumpers.into_iter().map(|d| (d.start_tick, d)).collect(), ModelChangeMetadata::new());
-        dumper_repo.clear_events();
 
         let mut soft_repo: Store<u32, CtrlChg, ModelChangeMetadata> = Store::new(true);
         soft_repo.bulk_add(exported.models.softs.into_iter().map(|s| (s.start_tick, s)).collect(), ModelChangeMetadata::new());
-        soft_repo.clear_events();
 
         ProjectImpl {
             rhythm: exported.rhythm,
@@ -939,7 +934,7 @@ pub type ProjectStore = SqliteUndoStore<ProjectCmd, ProjectImpl, ProjectCmdErr>;
 mod tests {
     use std::rc::Rc;
     use klavier_helper::store::Store;
-    use serdo::undo_store::{SqliteUndoStore, UndoStore};
+    use serdo::undo_store::{SqliteUndoStore, UndoStore, self};
     use crate::{tempo::{Tempo, TempoValue}, project::{tempo_at, ProjectCmd, ProjectCmdErr, ModelChangeMetadata, ProjectStore, LocationError}, note::Note, solfa::Solfa, octave::Octave, sharp_flat::SharpFlat, pitch::Pitch, duration::{Duration, Numerator, Denominator, Dots}, velocity::Velocity, trimmer::{Trimmer, RateTrimmer}, bar::{Bar, RepeatSet}, location::Location, rhythm::Rhythm, ctrl_chg::CtrlChg, key::Key, grid::Grid, models::{Models, ModelChanges}, channel::Channel};
     use super::{DEFAULT_TEMPO, ProjectImpl};
 
@@ -967,7 +962,7 @@ mod tests {
     fn undo_note_addition() {
         let mut dir = tempdir().unwrap().as_ref().to_path_buf();
         dir.push("project");
-        let mut store: ProjectStore = ProjectStore::open(dir.clone(), None).unwrap();
+        let mut store: ProjectStore = ProjectStore::open(dir.clone(), undo_store::Options::new()).unwrap();
 
         let note = Note::new(
             100,
@@ -993,7 +988,7 @@ mod tests {
     fn undo_bar_addition() {
         let mut dir = tempdir().unwrap().as_ref().to_path_buf();
         dir.push("project");
-        let mut store: ProjectStore = ProjectStore::open(dir.clone(), None).unwrap();
+        let mut store: ProjectStore = ProjectStore::open(dir.clone(), undo_store::Options::new()).unwrap();
 
         let bar = Bar::new(
             100,
@@ -1011,7 +1006,7 @@ mod tests {
     fn location_to_tick() {
         let mut dir = tempdir().unwrap().as_ref().to_path_buf();
         dir.push("project");
-        let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), None).unwrap();
+        let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), undo_store::Options::new()).unwrap();
 
         assert_eq!(store.model().location_to_tick(Location::new(0, 0)).unwrap(), 0);
         assert_eq!(store.model().location_to_tick(Location::new(0, 1)).unwrap(), 1);
@@ -1068,7 +1063,7 @@ mod tests {
     fn tick_to_location() {
         let mut dir = tempdir().unwrap().as_ref().to_path_buf();
         dir.push("project");
-        let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), None).unwrap();
+        let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), undo_store::Options::new()).unwrap();
 
         assert_eq!(store.model().tick_to_location(0), Location::new(0, 0));
         assert_eq!(store.model().tick_to_location(100), Location::new(0, 100));
@@ -1100,7 +1095,7 @@ mod tests {
     fn rhythm_at() {
         let mut dir = tempdir().unwrap().as_ref().to_path_buf();
         dir.push("project");
-        let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), None).unwrap();
+        let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), undo_store::Options::new()).unwrap();
 
         store.set_rhythm(Rhythm::new(6, 8));
         assert_eq!(store.model().last_bar(), None);
@@ -1152,7 +1147,7 @@ mod tests {
     fn note_max_tick_loc() {
         let mut dir = tempdir().unwrap().as_ref().to_path_buf();
         dir.push("project");
-        let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), None).unwrap();
+        let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), undo_store::Options::new()).unwrap();
 
         let pitch = Pitch::new(Solfa::C, Octave::Oct0, SharpFlat::Null);
         assert_eq!(store.model().note_max_end_tick(), None);
@@ -1200,7 +1195,7 @@ mod tests {
     fn replenish_bars() {
         let mut dir = tempdir().unwrap().as_ref().to_path_buf();
         dir.push("project");
-        let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), None).unwrap();
+        let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), undo_store::Options::new()).unwrap();
 
         let pitch = Pitch::new(Solfa::C, Octave::Oct0, SharpFlat::Null);
         assert_eq!(store.model().bar_repo().len(), 0);
@@ -1280,7 +1275,7 @@ mod tests {
     fn tuplize() {
         let mut dir = tempdir().unwrap().as_ref().to_path_buf();
         dir.push("project");
-        let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), None).unwrap();
+        let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), undo_store::Options::new()).unwrap();
 
         let note0 = Note::new(
             100,
@@ -1383,7 +1378,7 @@ mod tests {
     fn can_undo_set_rhythm() {
         let mut dir = tempdir().unwrap().as_ref().to_path_buf();
         dir.push("project");
-        let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), None).unwrap();
+        let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), undo_store::Options::new()).unwrap();
         
         store.set_rhythm(Rhythm::new(12, 8));
         assert_eq!(store.model().rhythm(), Rhythm::new(12, 8));
@@ -1411,7 +1406,7 @@ mod tests {
     fn can_undo_set_key() {
         let mut dir = tempdir().unwrap().as_ref().to_path_buf();
         dir.push("project");
-        let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), None).unwrap();
+        let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), undo_store::Options::new()).unwrap();
         
         store.set_key(Key::FLAT_1);
         store.set_key(Key::FLAT_2);
@@ -1428,7 +1423,7 @@ mod tests {
     fn can_undo_set_grid() {
         let mut dir = tempdir().unwrap().as_ref().to_path_buf();
         dir.push("project");
-        let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), None).unwrap();
+        let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), undo_store::Options::new()).unwrap();
         
         store.set_grid(Grid::from_u32(100).unwrap());
         store.set_grid(Grid::from_u32(200).unwrap());
@@ -1446,7 +1441,7 @@ mod tests {
     fn can_undo_add_note() {
         let mut dir = tempdir().unwrap().as_ref().to_path_buf();
         dir.push("project");
-        let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), None).unwrap();
+        let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), undo_store::Options::new()).unwrap();
         
         let note0 = Note::new(
             100,
@@ -1477,7 +1472,7 @@ mod tests {
     fn can_undo_add_bar() {
         let mut dir = tempdir().unwrap().as_ref().to_path_buf();
         dir.push("project");
-        let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), None).unwrap();
+        let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), undo_store::Options::new()).unwrap();
         
         let bar0 = Bar::new(
             1000, Some(Rhythm::new(3, 4)), None, RepeatSet::EMPTY
@@ -1498,7 +1493,7 @@ mod tests {
     fn can_undo_add_tempo() {
         let mut dir = tempdir().unwrap().as_ref().to_path_buf();
         dir.push("project");
-        let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), None).unwrap();
+        let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), undo_store::Options::new()).unwrap();
         
         let tempo0 = Tempo::new(200, 200);
         
@@ -1520,7 +1515,7 @@ mod tests {
     fn can_undo_add_dumper() {
         let mut dir = tempdir().unwrap().as_ref().to_path_buf();
         dir.push("project");
-        let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), None).unwrap();
+        let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), undo_store::Options::new()).unwrap();
         
         let dumper = CtrlChg::new(200, Velocity::new(20), Channel::default());
         store.add_dumper(dumper, false);
@@ -1542,7 +1537,7 @@ mod tests {
     fn can_undo_add_soft() {
         let mut dir = tempdir().unwrap().as_ref().to_path_buf();
         dir.push("project");
-        let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), None).unwrap();
+        let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), undo_store::Options::new()).unwrap();
         
         let soft = CtrlChg::new(200, Velocity::new(20), Channel::default());
         store.add_soft(soft, false);
@@ -1564,7 +1559,7 @@ mod tests {
     fn can_undo_tuplize() {
         let mut dir = tempdir().unwrap().as_ref().to_path_buf();
         dir.push("project");
-        let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), None).unwrap();
+        let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), undo_store::Options::new()).unwrap();
         
         // Do nothing for empty.
         store.tuplize(vec![]);
@@ -1641,7 +1636,7 @@ mod tests {
     fn can_undo_bulk_remove() {
         let mut dir = tempdir().unwrap().as_ref().to_path_buf();
         dir.push("project");
-        let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), None).unwrap();
+        let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), undo_store::Options::new()).unwrap();
         
         let note0 = Note::new(
             100,
@@ -1688,7 +1683,7 @@ mod tests {
     fn can_undo_bulk_add() {
         let mut dir = tempdir().unwrap().as_ref().to_path_buf();
         dir.push("project");
-        let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), None).unwrap();
+        let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), undo_store::Options::new()).unwrap();
         
         let note0 = Note::new(
             100,
@@ -1724,7 +1719,7 @@ mod tests {
     fn can_undo_change() {
         let mut dir = tempdir().unwrap().as_ref().to_path_buf();
         dir.push("project");
-        let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), None).unwrap();
+        let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), undo_store::Options::new()).unwrap();
         
         let note00 = Note::new(
             100,
@@ -1784,5 +1779,45 @@ mod tests {
         let mut z = store.model().tempo_repo().iter();
         assert_eq!(z.next(), Some(&(tempo0.start_tick, tempo0)));
         assert_eq!(z.next(), None);
+    }
+
+    #[test]
+    fn many_changes() {
+        let mut dir = tempdir().unwrap().as_ref().to_path_buf();
+        dir.push("project");
+        let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), undo_store::Options::new().with_undo_limit(10)).unwrap();
+        
+        let note00 = Note::new(
+            100,
+            Pitch::new(Solfa::C, Octave::Oct4, SharpFlat::Null),
+            Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
+            false, false,
+            Velocity::new(64),
+            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO,
+            Channel::default(),
+        );
+        let note01 = Note::new(
+            101,
+            Pitch::new(Solfa::C, Octave::Oct3, SharpFlat::Null),
+            Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
+            false, false,
+            Velocity::new(64),
+            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO,
+            Channel::default(),
+        );
+        store.add_note(note00, false);
+        store.add_note(note01, false);
+
+        for i in 0..20 {
+            let tempo = Tempo::new(200 + i, 200 + i as u16);
+            store.add_tempo(tempo, false);
+        }
+        assert_eq!(store.model().note_repo().len(), 2);
+        assert_eq!(store.model().tempo_repo().len(), 20);
+        drop(store);
+
+        let store2 = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), undo_store::Options::new().with_undo_limit(10)).unwrap();
+        assert_eq!(store2.model().note_repo().len(), 2);
+        assert_eq!(store2.model().tempo_repo().len(), 20);
     }
 }

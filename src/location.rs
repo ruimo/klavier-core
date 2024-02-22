@@ -1,5 +1,6 @@
 use std::fmt::Display;
 
+use once_cell::sync::Lazy;
 use regex::Regex;
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
@@ -9,12 +10,15 @@ pub struct Location {
 }
 
 impl Location {
+    const PARSER: Lazy<LocationParser> = Lazy::new(|| LocationParser::default());
+
     pub fn new(bar_no: usize, offset: usize) -> Self {
         Self { bar_no, offset }
     }
 
     pub fn bar_no(&self) -> usize { self.bar_no }
     pub fn offset(&self) -> usize { self.offset }
+    pub fn parse(s: &str) -> Option<Location> { Self::PARSER.parse(s) }
 }
 
 impl Display for Location {

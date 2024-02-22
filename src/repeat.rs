@@ -47,9 +47,13 @@ impl Chunk {
     ret
   }
 
-pub fn len(self) -> u32 {
+  pub fn contains(self, tick: u32) -> bool {
+    self.start_tick <= tick && tick < self.end_tick
+  }
+
+  pub fn len(self) -> u32 {
     self.end_tick - self.start_tick()
-}
+  }
 }
 
 pub trait Region: std::fmt::Debug {
