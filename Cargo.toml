@@ -18,7 +18,7 @@ serde_json = "1"
 regex = "1"
 once_cell = "1"
 gcd = "2.1.0"
-serdo = { version = "0.1.4", features = ["persistence"] }
+serdo = { version = "0.1.5-beta.1", features = ["persistence"] }
 #serdo = { path = "../serdo",  features = ["persistence"] }
 bincode = "1"
 error-stack = "0.4.1"

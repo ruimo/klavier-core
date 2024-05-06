@@ -1381,9 +1381,11 @@ mod tests {
         let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), undo_store::Options::new()).unwrap();
         
         store.set_rhythm(Rhythm::new(12, 8));
+        store.wait_until_saved();
         assert_eq!(store.model().rhythm(), Rhythm::new(12, 8));
         
         store.set_rhythm(Rhythm::new(12, 4));
+        store.wait_until_saved();
         assert_eq!(store.model().rhythm(), Rhythm::new(12, 4));
         
         store.undo();
@@ -1396,6 +1398,7 @@ mod tests {
         assert_eq!(store.model().rhythm(), Rhythm::new(12, 8));
         
         store.set_rhythm(Rhythm::new(16, 8));
+        store.wait_until_saved();
         assert_eq!(store.model().rhythm(), Rhythm::new(16, 8));
         
         store.undo();
@@ -1410,6 +1413,7 @@ mod tests {
         
         store.set_key(Key::FLAT_1);
         store.set_key(Key::FLAT_2);
+        store.wait_until_saved();
         assert_eq!(store.model().key, Key::FLAT_2);
         
         store.undo();
@@ -1427,7 +1431,7 @@ mod tests {
         
         store.set_grid(Grid::from_u32(100).unwrap());
         store.set_grid(Grid::from_u32(200).unwrap());
-        
+        store.wait_until_saved();        
         assert_eq!(store.model().grid.as_u32(), 200);
         
         store.undo();
@@ -1436,7 +1440,7 @@ mod tests {
         store.redo();
         assert_eq!(store.model().grid.as_u32(), 200);
     }
-    
+
     #[test]
     fn can_undo_add_note() {
         let mut dir = tempdir().unwrap().as_ref().to_path_buf();
@@ -1454,7 +1458,7 @@ mod tests {
         );
         
         store.add_note(note0.clone(), false);
-        
+        store.wait_until_saved();
         assert_eq!(store.model().note_repo.len(), 1);
         assert_eq!(store.model().bar_repo.len(), 1); // bar is replenished.
         
@@ -1479,6 +1483,7 @@ mod tests {
         );
         
         store.add_bar(bar0, false);
+        store.wait_until_saved();
         assert_eq!(store.model().bar_repo.len(), 1); // with replenished bar
         
         store.undo();
@@ -1498,6 +1503,7 @@ mod tests {
         let tempo0 = Tempo::new(200, 200);
         
         store.add_tempo(tempo0, false);
+        store.wait_until_saved();
         assert_eq!(store.model().tempo_repo.len(), 1);
         assert_eq!(store.model().bar_repo.len(), 1); // bar is replenished.
         
@@ -1519,7 +1525,7 @@ mod tests {
         
         let dumper = CtrlChg::new(200, Velocity::new(20), Channel::default());
         store.add_dumper(dumper, false);
-        
+        store.wait_until_saved();
         assert_eq!(store.model().dumper_repo.len(), 1);
         assert_eq!(store.model().bar_repo.len(), 1); // bar is replenished.
         
@@ -1541,7 +1547,7 @@ mod tests {
         
         let soft = CtrlChg::new(200, Velocity::new(20), Channel::default());
         store.add_soft(soft, false);
-        
+        store.wait_until_saved();
         assert_eq!(store.model().soft_repo.len(), 1);
         assert_eq!(store.model().bar_repo.len(), 1); // bar is replenished.
         
@@ -1579,6 +1585,7 @@ mod tests {
         
         // Tuplize one note do nothing.
         store.tuplize(vec![Rc::new(note0.clone())]);
+        store.wait_until_saved();
         assert_eq!(store.model().note_repo.len(), 1);
         assert_eq!(store.model().bar_repo.len(), 1); // bar replenished
         assert_eq!(store.model().note_repo.get(100u32), &vec![Rc::new(note0.clone())]);
@@ -1611,6 +1618,7 @@ mod tests {
         store.add_note(note2.clone(), false);
         
         store.tuplize(vec![Rc::new(note0.clone()), Rc::new(note1.clone()), Rc::new(note2.clone())]);
+        store.wait_until_saved();
         
         assert_eq!(store.model().note_repo.len(), 3);
         assert_eq!(store.model().bar_repo.len(), 1);
@@ -1655,7 +1663,7 @@ mod tests {
             },
             ModelChangeMetadata::new()
         );
-
+        store.wait_until_saved();
         assert_eq!(store.model().note_repo().len(), 1);
         assert_eq!(store.model().bar_repo().len(), 1); // bar is replenished.
         assert_eq!(store.model().tempo_repo().len(), 1);
@@ -1667,6 +1675,7 @@ mod tests {
             },
             ModelChangeMetadata::new()
         );
+        store.wait_until_saved();
 
         assert_eq!(store.model().note_repo().len(), 0);
         assert_eq!(store.model().bar_repo().len(), 1);
@@ -1703,6 +1712,7 @@ mod tests {
             },
             ModelChangeMetadata::new()
         );
+        store.wait_until_saved();
 
         assert_eq!(store.model().note_repo().len(), 1);
         assert_eq!(store.model().bar_repo().len(), 1); // bar is replenished.
@@ -1747,6 +1757,7 @@ mod tests {
             },
             ModelChangeMetadata::new()
         );
+        store.wait_until_saved();
 
         assert_eq!(store.model().note_repo().len(), 2);
         assert_eq!(store.model().bar_repo().len(), 1); // bar is replenished.
@@ -1759,6 +1770,7 @@ mod tests {
             bars: vec![], tempos: vec![], dumpers: vec![], softs: vec![]
         };
         store.change(change, ModelChangeMetadata::new());
+        store.wait_until_saved();
 
         assert_eq!(store.model().note_repo().len(), 2);
         let mut z = store.model().note_repo().iter();
