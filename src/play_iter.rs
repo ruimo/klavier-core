@@ -16,6 +16,7 @@ impl PlayIter {
   }
 
   pub fn iter(self) -> u8 { self.iter }
+
   pub fn set_iter(&mut self, current_iter: u8) -> bool {
     if 0 < current_iter && current_iter <= MAX_ITER {
       self.iter = current_iter;

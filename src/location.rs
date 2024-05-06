@@ -53,7 +53,6 @@ impl LocationParser {
 #[cfg(test)]
 mod tests {
     use crate::location::Location;
-
     use super::LocationParser;
 
     #[test]

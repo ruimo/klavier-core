@@ -3,7 +3,11 @@ use error_stack::{Context, report};
 use gcollections::ops::{Intersection, Union, Bounded};
 use interval::{IntervalSet, interval_set::ToIntervalSet};
 use error_stack::Result;
+use klavier_helper::store::Store;
 use crate::{bar::{Bar, VarIndex, Repeat}, rhythm::Rhythm, have_start_tick::HaveBaseStartTick, global_repeat::{GlobalRepeat, RenderRegionWarning, GlobalRepeatBuilder}};
+
+// Accumulated tick after rendering repeats.
+pub type AccumTick = u32;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Chunk {
@@ -26,7 +30,7 @@ impl Chunk {
     self.end_tick
   }
 
-  pub fn optimise(chunks: &[Chunk]) -> Vec<Chunk> {
+  pub fn optimize(chunks: &[Chunk]) -> Vec<Chunk> {
     let mut ret: Vec<Chunk> = vec![];
     let mut z = chunks.iter();
     let mut cur = match z.next() {
@@ -53,6 +57,20 @@ impl Chunk {
 
   pub fn len(self) -> u32 {
     self.end_tick - self.start_tick()
+  }
+
+  pub fn by_accum_tick(chunks: &[Chunk]) -> Store<AccumTick, Chunk, ()> {
+    let mut offset: u32 = 0;
+    let mut buf: Store<AccumTick, Chunk, ()> = Store::new(false);
+
+    for c in chunks {
+        buf.add(offset, c.clone(), ());
+        if c.end_tick() != u32::MAX {
+            offset += c.len();
+        }
+    }
+
+    buf
   }
 }
 
@@ -483,11 +501,15 @@ pub fn render_region<'a>(tune_rhythm: Rhythm, bars: impl Iterator<Item = &'a Bar
 
 #[cfg(test)]
 mod tests {
-  use crate::{repeat::{render_region, Chunk, RenderRegionError, SimpleRegion, GlobalRepeatBuilder}, rhythm::Rhythm, bar::{Bar, Repeat}};
+  use crate::{bar::{Bar, Repeat}, play_iter::PlayIter, play_start_tick::{PlayStartTick, ToAccumTickError}, repeat::{render_region, Chunk, GlobalRepeatBuilder, RenderRegionError, SimpleRegion}, rhythm::Rhythm};
   use crate::repeat_set;
-  use super::{SequenceRegion, RenderPhase};
+  use super::{AccumTick, RenderPhase, SequenceRegion};
   use crate::bar::RepeatSet;
   use error_stack::Result;
+
+  fn to_accum_tick(tick: u32, iter: u8, chunks: &[(AccumTick, Chunk)]) -> std::result::Result<AccumTick, ToAccumTickError> {
+    PlayStartTick::new(tick, iter).to_accum_tick(chunks)
+  }
 
   #[test]
   fn empty() {
@@ -496,6 +518,11 @@ mod tests {
     let chunks = region.to_chunks();
     assert_eq!(chunks.len(), 1);
     assert_eq!(chunks[0], Chunk::new(0, u32::MAX));
+
+    let by_accum_tick = Chunk::by_accum_tick(&chunks);
+    assert_eq!(to_accum_tick(0, 1, &by_accum_tick).unwrap(), 0);
+    assert_eq!(to_accum_tick(100, 1, &by_accum_tick).unwrap(), 100);
+    assert_eq!(to_accum_tick(100, 2, &by_accum_tick), Err(ToAccumTickError::CannotFind { specified_iter: PlayIter::new(2), max_iter: 1 }));
   }
 
   // 0    100
@@ -508,6 +535,11 @@ mod tests {
     let chunks = region.to_chunks();
     assert_eq!(chunks.len(), 1);
     assert_eq!(chunks[0], Chunk::new(0, u32::MAX));
+
+    let by_accum_tick = Chunk::by_accum_tick(&chunks);
+    assert_eq!(to_accum_tick(0, 1, &by_accum_tick).unwrap(), 0);
+    assert_eq!(to_accum_tick(100, 1, &by_accum_tick).unwrap(), 100);
+    assert_eq!(to_accum_tick(100, 2, &by_accum_tick), Err(ToAccumTickError::CannotFind { specified_iter: PlayIter::new(2), max_iter: 1 }));
   }
 
   // 0    100
@@ -527,10 +559,19 @@ mod tests {
     assert_eq!(chunks[1], Chunk::new(0, 100));
     assert_eq!(chunks[2], Chunk::new(100, u32::MAX));
 
-    let chunks = Chunk::optimise(&chunks);
+    let chunks = Chunk::optimize(&chunks);
     assert_eq!(chunks.len(), 2);
     assert_eq!(chunks[0], Chunk::new(0, 100));
     assert_eq!(chunks[1], Chunk::new(0, u32::MAX));
+
+    let by_accum_tick = Chunk::by_accum_tick(&chunks);
+    assert_eq!(to_accum_tick(0, 1, &by_accum_tick).unwrap(), 0);
+    assert_eq!(to_accum_tick(50, 1, &by_accum_tick).unwrap(), 50);
+    assert_eq!(to_accum_tick(0, 2, &by_accum_tick).unwrap(), 100);
+    assert_eq!(to_accum_tick(50, 2, &by_accum_tick).unwrap(), 150);
+    assert_eq!(to_accum_tick(100, 1, &by_accum_tick).unwrap(), 200);
+    assert_eq!(to_accum_tick(150, 1, &by_accum_tick).unwrap(), 250);
+    assert_eq!(to_accum_tick(100, 2, &by_accum_tick), Err(ToAccumTickError::CannotFind { specified_iter: PlayIter::new(2), max_iter: 1 }));
   }
 
   // 0    100   200
@@ -569,10 +610,23 @@ mod tests {
     assert_eq!(chunks[2], Chunk::new(100, 200));
     assert_eq!(chunks[3], Chunk::new(200, u32::MAX));
 
-    let chunks = Chunk::optimise(&chunks);
+    let chunks = Chunk::optimize(&chunks);
     assert_eq!(chunks.len(), 2);
     assert_eq!(chunks[0], Chunk::new(0, 200));
     assert_eq!(chunks[1], Chunk::new(100, u32::MAX));
+
+    let by_accum_tick = Chunk::by_accum_tick(&chunks);
+    assert_eq!(to_accum_tick(0, 1, &by_accum_tick).unwrap(), 0);
+    assert_eq!(to_accum_tick(0, 2, &by_accum_tick), Err(ToAccumTickError::CannotFind { specified_iter: PlayIter::new(2), max_iter: 1 }));
+    assert_eq!(to_accum_tick(50, 2, &by_accum_tick), Err(ToAccumTickError::CannotFind { specified_iter: PlayIter::new(2), max_iter: 1 }));
+    assert_eq!(to_accum_tick(100, 1, &by_accum_tick).unwrap(), 100);
+    assert_eq!(to_accum_tick(150, 1, &by_accum_tick).unwrap(), 150);
+    assert_eq!(to_accum_tick(100, 2, &by_accum_tick).unwrap(), 200);
+    assert_eq!(to_accum_tick(150, 2, &by_accum_tick).unwrap(), 250);
+    assert_eq!(to_accum_tick(200, 1, &by_accum_tick).unwrap(), 300);
+    assert_eq!(to_accum_tick(250, 1, &by_accum_tick).unwrap(), 350);
+    assert_eq!(to_accum_tick(200, 2, &by_accum_tick), Err(ToAccumTickError::CannotFind { specified_iter: PlayIter::new(2), max_iter: 1 }));
+    assert_eq!(to_accum_tick(250, 2, &by_accum_tick), Err(ToAccumTickError::CannotFind { specified_iter: PlayIter::new(2), max_iter: 1 }));
   }
 
   // 0    50          200
@@ -595,10 +649,18 @@ mod tests {
     assert_eq!(chunks[2], Chunk::new(50, 200));
     assert_eq!(chunks[3], Chunk::new(200, u32::MAX));
 
-    let chunks = Chunk::optimise(&chunks);
+    let chunks = Chunk::optimize(&chunks);
     assert_eq!(chunks.len(), 2);
     assert_eq!(chunks[0], Chunk::new(0, 200));
     assert_eq!(chunks[1], Chunk::new(50, u32::MAX));
+
+    let by_accum_tick = Chunk::by_accum_tick(&chunks);
+    assert_eq!(to_accum_tick(0, 1, &by_accum_tick).unwrap(), 0);
+    assert_eq!(to_accum_tick(50, 1, &by_accum_tick).unwrap(), 50);
+    assert_eq!(to_accum_tick(50, 2, &by_accum_tick).unwrap(), 200);
+    assert_eq!(to_accum_tick(199, 2, &by_accum_tick).unwrap(), 349);
+    assert_eq!(to_accum_tick(200, 1, &by_accum_tick).unwrap(), 350);
+    assert_eq!(to_accum_tick(200, 2, &by_accum_tick), Err(ToAccumTickError::CannotFind { specified_iter: PlayIter::new(2), max_iter: 1 }));
   }
 
   // 0     50       100       150
@@ -623,11 +685,18 @@ mod tests {
     assert_eq!(chunks[3], Chunk::new(100, 150));
     assert_eq!(chunks[4], Chunk::new(150, u32::MAX));
 
-    let chunks = Chunk::optimise(&chunks);
+    let chunks = Chunk::optimize(&chunks);
     assert_eq!(chunks.len(), 3);
     assert_eq!(chunks[0], Chunk::new(0, 100));
     assert_eq!(chunks[1], Chunk::new(0, 50));
     assert_eq!(chunks[2], Chunk::new(100, u32::MAX));
+
+    let by_accum_tick = Chunk::by_accum_tick(&chunks);
+    assert_eq!(to_accum_tick(0, 1, &by_accum_tick).unwrap(), 0);
+    assert_eq!(to_accum_tick(0, 2, &by_accum_tick).unwrap(), 100);
+    assert_eq!(to_accum_tick(20, 2, &by_accum_tick).unwrap(), 120);
+    assert_eq!(to_accum_tick(100, 1, &by_accum_tick).unwrap(), 150);
+    assert_eq!(to_accum_tick(100, 2, &by_accum_tick), Err(ToAccumTickError::CannotFind { specified_iter: PlayIter::new(2), max_iter: 1 }));
   }
 
   // 0    100        200        350       500        650
@@ -654,11 +723,20 @@ mod tests {
     assert_eq!(chunks[3], Chunk::new(350, 650));
     assert_eq!(chunks[4], Chunk::new(650, u32::MAX));
 
-    let chunks = Chunk::optimise(&chunks);
+    let chunks = Chunk::optimize(&chunks);
     assert_eq!(chunks.len(), 3);
     assert_eq!(chunks[0], Chunk::new(0, 350));
     assert_eq!(chunks[1], Chunk::new(0, 100));
     assert_eq!(chunks[2], Chunk::new(350, u32::MAX));
+
+    let by_accum_tick = Chunk::by_accum_tick(&chunks);
+    assert_eq!(to_accum_tick(0, 1, &by_accum_tick).unwrap(), 0);
+    assert_eq!(to_accum_tick(200, 1, &by_accum_tick).unwrap(), 200);
+    assert_eq!(to_accum_tick(0, 2, &by_accum_tick).unwrap(), 350);
+    assert_eq!(to_accum_tick(350, 1, &by_accum_tick).unwrap(), 450);
+    assert_eq!(to_accum_tick(650, 1, &by_accum_tick).unwrap(), 750);
+    assert_eq!(to_accum_tick(650, 2, &by_accum_tick), Err(ToAccumTickError::CannotFind { specified_iter: PlayIter::new(2), max_iter: 1 }));
+    assert_eq!(to_accum_tick(0, 3, &by_accum_tick), Err(ToAccumTickError::CannotFind { specified_iter: PlayIter::new(3), max_iter: 2 }));
   }
 
   // Non auftakt.
@@ -681,10 +759,15 @@ mod tests {
     assert_eq!(chunks[0], Chunk::new(0, 1440));
     assert_eq!(chunks[1], Chunk::new(0, 480));
 
-    let chunks = Chunk::optimise(&chunks);
+    let chunks = Chunk::optimize(&chunks);
     assert_eq!(chunks.len(), 2);
     assert_eq!(chunks[0], Chunk::new(0, 1440));
     assert_eq!(chunks[1], Chunk::new(0, 480));
+
+    let by_accum_tick = Chunk::by_accum_tick(&chunks);
+    assert_eq!(to_accum_tick(0, 1, &by_accum_tick).unwrap(), 0);
+    assert_eq!(to_accum_tick(0, 2, &by_accum_tick).unwrap(), 1440);
+    assert_eq!(to_accum_tick(0, 3, &by_accum_tick), Err(ToAccumTickError::CannotFind { specified_iter: PlayIter::new(3), max_iter: 2 }));
   }
 
   // Non auftakt.
@@ -715,7 +798,7 @@ mod tests {
     assert_eq!(chunks[5], Chunk::new(0, 480));
     assert_eq!(chunks[6], Chunk::new(730, 1030));
 
-    let chunks = Chunk::optimise(&chunks);
+    let chunks = Chunk::optimize(&chunks);
     assert_eq!(chunks.len(), 5);
     assert_eq!(chunks[0], Chunk::new(0, 730));
     assert_eq!(chunks[1], Chunk::new(0, 480));
@@ -723,6 +806,16 @@ mod tests {
     assert_eq!(chunks[3], Chunk::new(0, 480));
     assert_eq!(chunks[4], Chunk::new(730, 1030));
 
+    let by_accum_tick = Chunk::by_accum_tick(&chunks);
+    assert_eq!(to_accum_tick(0, 1, &by_accum_tick).unwrap(), 0);
+    assert_eq!(to_accum_tick(480, 1, &by_accum_tick).unwrap(), 480);
+    assert_eq!(to_accum_tick(400, 2, &by_accum_tick).unwrap(), 730 + 400);
+    assert_eq!(to_accum_tick(800, 1, &by_accum_tick).unwrap(), 730 + 480 + (800 - 730));
+    assert_eq!(to_accum_tick(1180, 1, &by_accum_tick).unwrap(), 730 + 480 + (1180 - 730));
+    assert_eq!(to_accum_tick(0, 3, &by_accum_tick).unwrap(), 730 + 480 + (1280 - 730));
+    assert_eq!(to_accum_tick(0, 4, &by_accum_tick), Err(ToAccumTickError::CannotFind { specified_iter: PlayIter::new(4), max_iter: 3 }));
+    assert_eq!(to_accum_tick(730, 2, &by_accum_tick).unwrap(), 730 + 480 + (1280 - 730) + 480);
+    assert_eq!(to_accum_tick(730, 3, &by_accum_tick), Err(ToAccumTickError::CannotFind { specified_iter: PlayIter::new(3), max_iter: 2 }));
   }
 
   // 0 480    530        600   1080 
@@ -752,7 +845,7 @@ mod tests {
     assert_eq!(chunks[7], Chunk::new(0, 480));
     assert_eq!(chunks[8], Chunk::new(480, 530));
 
-    let chunks = Chunk::optimise(&chunks);
+    let chunks = Chunk::optimize(&chunks);
     assert_eq!(chunks.len(), 5);
     assert_eq!(chunks[0], Chunk::new(0, 530));
     assert_eq!(chunks[1], Chunk::new(480, 600));
@@ -795,7 +888,7 @@ mod tests {
     assert_eq!(chunks[8], Chunk::new(400, 450));
     assert_eq!(chunks[9], Chunk::new(450, u32::MAX));
 
-    let chunks = Chunk::optimise(&chunks);
+    let chunks = Chunk::optimize(&chunks);
     assert_eq!(chunks.len(), 5);
     assert_eq!(chunks[0], Chunk::new(0, 200));
     assert_eq!(chunks[1], Chunk::new(50, 150));
@@ -842,7 +935,7 @@ mod tests {
     assert_eq!(chunks[9], Chunk::new(500, 550));
     assert_eq!(chunks[10], Chunk::new(550, u32::MAX));
 
-    let chunks = Chunk::optimise(&chunks);
+    let chunks = Chunk::optimize(&chunks);
     assert_eq!(chunks.len(), 5);
     assert_eq!(chunks[0], Chunk::new(0, 200));
     assert_eq!(chunks[1], Chunk::new(50, 150));
@@ -907,7 +1000,7 @@ mod tests {
     assert_eq!(*z.next().unwrap(), Chunk::new(670, 720));
     assert_eq!(z.next(), None);
 
-    let chunks = Chunk::optimise(&chunks);
+    let chunks = Chunk::optimize(&chunks);
     assert_eq!(chunks.len(), 9);
     let mut z = chunks.iter();
     assert_eq!(*z.next().unwrap(), Chunk::new(0, 420));
@@ -947,7 +1040,7 @@ mod tests {
     assert_eq!(*z.next().unwrap(), Chunk::new(300, u32::MAX));
     assert_eq!(z.next(), None);
 
-    let chunks = Chunk::optimise(&chunks);
+    let chunks = Chunk::optimize(&chunks);
     let mut z = chunks.iter();
     assert_eq!(*z.next().unwrap(), Chunk::new(0, 200));
     assert_eq!(*z.next().unwrap(), Chunk::new(0, 300));
@@ -979,7 +1072,7 @@ mod tests {
     assert_eq!(*z.next().unwrap(), Chunk::new(0, 270));
     assert_eq!(z.next(), None);
 
-    let chunks = Chunk::optimise(&chunks);
+    let chunks = Chunk::optimize(&chunks);
     let mut z = chunks.iter();
     assert_eq!(*z.next().unwrap(), Chunk::new(0, 270));
     assert_eq!(*z.next().unwrap(), Chunk::new(0, 370));
@@ -1017,7 +1110,7 @@ mod tests {
     assert_eq!(*z.next().unwrap(), Chunk::new(120, 170));
     assert_eq!(z.next(), None);
 
-    let chunks = Chunk::optimise(&chunks);
+    let chunks = Chunk::optimize(&chunks);
     let mut z = chunks.iter();
     assert_eq!(*z.next().unwrap(), Chunk::new(0, 170));
     assert_eq!(*z.next().unwrap(), Chunk::new(120, 270));
@@ -1054,7 +1147,7 @@ mod tests {
     assert_eq!(*z.next().unwrap(), Chunk::new(370, u32::MAX));
     assert_eq!(z.next(), None);
 
-    let chunks = Chunk::optimise(&chunks);
+    let chunks = Chunk::optimize(&chunks);
     let mut z = chunks.iter();
     assert_eq!(*z.next().unwrap(), Chunk::new(0, 370));
     assert_eq!(*z.next().unwrap(), Chunk::new(170, 370));
@@ -1087,7 +1180,7 @@ mod tests {
     assert_eq!(*z.next().unwrap(), Chunk::new(200, 270));
     assert_eq!(z.next(), None);
 
-    let chunks = Chunk::optimise(&chunks);
+    let chunks = Chunk::optimize(&chunks);
     let mut z = chunks.iter();
     assert_eq!(*z.next().unwrap(), Chunk::new(0, 270));
     assert_eq!(*z.next().unwrap(), Chunk::new(0, 370));
@@ -1125,7 +1218,7 @@ mod tests {
     assert_eq!(*z.next().unwrap(), Chunk::new(200, 270));
     assert_eq!(z.next(), None);
 
-    let chunks = Chunk::optimise(&chunks);
+    let chunks = Chunk::optimize(&chunks);
     let mut z = chunks.iter();
     assert_eq!(*z.next().unwrap(), Chunk::new(0, 270));
     assert_eq!(*z.next().unwrap(), Chunk::new(0, 470));
@@ -1164,7 +1257,7 @@ mod tests {
     assert_eq!(*z.next().unwrap(), Chunk::new(570, u32::MAX));
     assert_eq!(z.next(), None);
 
-    let chunks = Chunk::optimise(&chunks);
+    let chunks = Chunk::optimize(&chunks);
     let mut z = chunks.iter();
     assert_eq!(*z.next().unwrap(), Chunk::new(0, 270));
     assert_eq!(*z.next().unwrap(), Chunk::new(0, 670));
@@ -1203,7 +1296,7 @@ mod tests {
     assert_eq!(*z.next().unwrap(), Chunk::new(570, 670));
     assert_eq!(z.next(), None);
 
-    let chunks = Chunk::optimise(&chunks);
+    let chunks = Chunk::optimize(&chunks);
     let mut z = chunks.iter();
     assert_eq!(*z.next().unwrap(), Chunk::new(0, 270));
     assert_eq!(*z.next().unwrap(), Chunk::new(0, 770));
@@ -1241,7 +1334,7 @@ mod tests {
     assert_eq!(*z.next().unwrap(), Chunk::new(670, u32::MAX));
     assert_eq!(z.next(), None);
 
-    let chunks = Chunk::optimise(&chunks);
+    let chunks = Chunk::optimize(&chunks);
     let mut z = chunks.iter();
     assert_eq!(*z.next().unwrap(), Chunk::new(0, 270));
     assert_eq!(*z.next().unwrap(), Chunk::new(0, 570));
