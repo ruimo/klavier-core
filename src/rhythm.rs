@@ -15,6 +15,7 @@ impl Display for Numerator {
     }
 }
 
+#[derive(Debug)]
 pub enum NumeratorError {
     InvalidValue(u8),
     CannotParse(String),

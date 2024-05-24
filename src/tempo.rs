@@ -71,7 +71,6 @@ impl TempoValue {
     pub fn safe_new(value: u16) -> TempoValue {
         Self::new(if MAX_TEMPO_VALUE < value { MAX_TEMPO_VALUE } else { value })
     }
-
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]

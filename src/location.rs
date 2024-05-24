@@ -1,6 +1,5 @@
 use std::fmt::Display;
 
-use once_cell::sync::Lazy;
 use regex::Regex;
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
@@ -10,15 +9,13 @@ pub struct Location {
 }
 
 impl Location {
-    const PARSER: Lazy<LocationParser> = Lazy::new(|| LocationParser::default());
-
     pub fn new(bar_no: usize, offset: usize) -> Self {
         Self { bar_no, offset }
     }
 
     pub fn bar_no(&self) -> usize { self.bar_no }
     pub fn offset(&self) -> usize { self.offset }
-    pub fn parse(s: &str) -> Option<Location> { Self::PARSER.parse(s) }
+    pub fn parse(s: &str) -> Option<Location> { parse_location(s) }
 }
 
 impl Display for Location {
@@ -27,46 +24,31 @@ impl Display for Location {
     }
 }
 
-pub struct LocationParser {
-    pattern: Regex,
-}
 
-impl Default for LocationParser {
-    fn default() -> Self {
-        Self {
-            pattern: Regex::new(r"^(\d+):(\d+)$").unwrap()
+const LOCATION_PATTERN: once_cell::unsync::Lazy<Regex> = once_cell::unsync::Lazy::new(|| Regex::new(r"^(\d+):(\d+)$").unwrap());
+pub fn parse_location(s: &str) -> Option<Location> {
+    LOCATION_PATTERN.captures(s).map(|c| {
+        Location {
+            bar_no: c.get(1).unwrap().as_str().parse().unwrap(),
+            offset: c.get(2).unwrap().as_str().parse().unwrap(),
         }
-    }
-}
-
-impl LocationParser {
-    pub fn parse(&self, s: &str) -> Option<Location> {
-        self.pattern.captures(s).map(|c| {
-            Location {
-                bar_no: c.get(1).unwrap().as_str().parse().unwrap(),
-                offset: c.get(2).unwrap().as_str().parse().unwrap(),
-            }
-        })
-    }
+    })
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::location::Location;
-    use super::LocationParser;
+    use crate::location::{parse_location, Location};
 
     #[test]
     fn parse_fail() {
-        let parser = LocationParser::default();
-        assert_eq!(parser.parse(""), None);
-        assert_eq!(parser.parse("012"), None);
-        assert_eq!(parser.parse("01:"), None);
-        assert_eq!(parser.parse(":01"), None);
+        assert_eq!(parse_location(""), None);
+        assert_eq!(parse_location("012"), None);
+        assert_eq!(parse_location("01:"), None);
+        assert_eq!(parse_location(":01"), None);
     }
 
     #[test]
     fn parse_ok() {
-        let parser = LocationParser::default();
-        assert_eq!(parser.parse("123:456"), Some(Location::new(123, 456)));
+        assert_eq!(parse_location("123:456"), Some(Location::new(123, 456)));
     }
 }

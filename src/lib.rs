@@ -27,3 +27,4 @@ pub mod global_repeat;
 pub mod channel;
 pub mod play_iter;
 pub mod play_start_tick;
+pub mod text_input;
