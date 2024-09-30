@@ -107,7 +107,7 @@ impl FromStr for Validated<Option<rhythm::Numerator>> {
         if s.is_empty() {
             Ok(Validated(None))
         } else {
-            from_str(s)
+            rhythm::Numerator::from_str(s).map(|n| Validated(Some(n)))
         }
     }
 }

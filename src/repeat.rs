@@ -6,7 +6,7 @@ use error_stack::Result;
 use klavier_helper::store::Store;
 use crate::{bar::{Bar, VarIndex, Repeat}, rhythm::Rhythm, have_start_tick::HaveBaseStartTick, global_repeat::{GlobalRepeat, RenderRegionWarning, GlobalRepeatBuilder}};
 
-// Accumulated tick after rendering repeats.
+// Accumulated tick after repeats are rendered.
 pub type AccumTick = u32;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
