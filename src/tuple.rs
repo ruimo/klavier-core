@@ -12,6 +12,7 @@ pub fn tuplize(mut notes: Vec<Rc<Note>>) -> Vec<Rc<Note>> {
         let start_tick = notes[0].base_start_tick();
         let (total_tick, total_unit) = total_tick_unit(&sorted);
         let denominator = total_unit / min_unit;
+        if denominator < 2 { return vec![]; }
         let total_tick = total_tick / denominator * 2;
         let denominator = Denominator::from_value(denominator as u8).unwrap();
         let mut u = 0;
