@@ -3,20 +3,20 @@ use std::{rc::Rc, ops::Index, collections::HashSet};
 use super::{note::Note, have_start_tick::HaveBaseStartTick, duration::{Duration, Denominator}};
 use gcd::Gcd;
 
-pub fn tuplize(mut notes: Vec<Rc<Note>>) -> Vec<Rc<Note>> {
+pub fn tuplize(notes: Vec<Rc<Note>>) -> Vec<Rc<Note>> {
     if notes.is_empty() { return vec![]; }
-    let notes = &mut notes;
-    let (min_unit, sorted) = sort_by_start_tick(notes);
+    let work = &mut notes.clone();
+    let (min_unit, sorted) = sort_by_start_tick(work);
 
     if let Some(min_unit) = min_unit {
-        let start_tick = notes[0].base_start_tick();
+        let start_tick = work[0].base_start_tick();
         let (total_tick, total_unit) = total_tick_unit(&sorted);
         let denominator = total_unit / min_unit;
-        if denominator < 2 { return vec![]; }
+        if denominator < 2 { return notes; }
         let total_tick = total_tick / denominator * 2;
         let denominator = Denominator::from_value(denominator as u8).unwrap();
         let mut u = 0;
-        let mut ret = Vec::with_capacity(notes.len());
+        let mut ret = Vec::with_capacity(work.len());
 
         for e in sorted.iter() {
             match e {
