@@ -25,6 +25,7 @@ error-stack = "^0"
 enumset = { version = "^1", features = ["serde"] }
 intervallum = "^1"
 gcollections = "^1"
+derive_builder = "0.20.2"
 
 [dev-dependencies]
 tempfile = "^3"

@@ -2,7 +2,7 @@ use crate::{solfa::Solfa, key::Key};
 use crate::octave::Octave;
 use crate::sharp_flat::SharpFlat;
 use std::fmt::{self};
-
+use derive_builder::Builder;
 use super::octave;
 
 #[derive(Debug)]
@@ -30,7 +30,8 @@ impl fmt::Display for PitchError {
 
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(from = "PitchSerializedForm")]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Builder)]
+#[builder(default)]
 pub struct Pitch {
     solfa: Solfa,
     octave: Octave,

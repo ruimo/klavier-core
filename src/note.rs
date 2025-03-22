@@ -16,6 +16,7 @@ use super::percent::PercentU16;
 use super::pitch::PitchError;
 use super::trimmer::Trimmer;
 use super::velocity::{Velocity, self};
+use derive_builder::Builder;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum TickError {
@@ -26,7 +27,8 @@ pub enum TickError {
 pub struct InvalidDot(i32);
 
 #[derive(serde::Deserialize, serde::Serialize)]
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Builder)]
+#[builder(default)]
 pub struct Note {
     pub base_start_tick: u32,
     pub pitch: Pitch,
@@ -280,6 +282,8 @@ impl HaveStartTick for Rc<Note> {
 #[cfg(test)]
 mod tests {
     use crate::{note::Note, pitch::{Pitch, self}, solfa::Solfa, octave::Octave, sharp_flat::SharpFlat, duration::{Duration, Numerator, Denominator, Dots}, trimmer::{Trimmer, RateTrimmer}, velocity::Velocity, channel::Channel};
+
+    use super::NoteBuilder;
     
     #[test]
     fn tick_len() {
@@ -347,5 +351,19 @@ mod tests {
         assert_eq!(note.with_tick_added(-122, true).unwrap().start_tick(), 1);
         assert_eq!(note.with_tick_added(-123, true).unwrap().start_tick(), 0);
         assert!(note.with_tick_added(-124, true).is_err());
+    }
+    
+    #[test]
+    fn builder() {
+        let note_builder: NoteBuilder = NoteBuilder::default()
+          .base_start_tick(12u32)
+          .base_velocity(Velocity::new(99))
+          .clone();
+        
+        let note0 = note_builder.clone().base_start_tick(123u32).build().unwrap();
+        let note1 = note_builder.clone().build().unwrap();
+        
+        assert_eq!(note0.base_start_tick, 123);
+        assert_eq!(note1.base_start_tick, 12);
     }
 }
