@@ -1,8 +1,7 @@
 use std::{collections::VecDeque};
 use crate::{models::{Models}, project::ModelChangeMetadata};
 
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug, serde::Deserialize, serde::Serialize)]
 pub enum Undo {
     Changed { added: Models, removed: Models, metadata: ModelChangeMetadata },
 }
