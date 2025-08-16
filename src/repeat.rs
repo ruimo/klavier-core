@@ -106,7 +106,7 @@ impl SimpleRegion for NullRegion {
   }
   
   fn to_iter1_chunks(&self, _: &GlobalRepeat) -> Vec<Chunk> {
-      vec![]
+    vec![]
   }
 }
 
@@ -309,25 +309,25 @@ pub struct CompoundRegion {
 impl Region for CompoundRegion {
   fn to_chunks(&self) -> Vec<Chunk> {
     match self.global_repeat.as_ref() {
-        Some(gr) => {
-          let mut chunks = vec![];
-          for r in self.regions.iter() {
-            chunks.extend(r.render_chunks(&RenderPhase::DcDsIter0 { dc_ds_tick: gr.ds_dc().tick() }));
-          }
-          for r in self.regions.iter() {
-            chunks.extend(r.render_chunks(&RenderPhase::DcDsIter1 { dc_ds_tick: gr.ds_dc().tick(), global_repeat: gr.clone() } ));
-          }
-
-          chunks
+      Some(gr) => {
+        let mut chunks = vec![];
+        for r in self.regions.iter() {
+          chunks.extend(r.render_chunks(&RenderPhase::DcDsIter0 { dc_ds_tick: gr.ds_dc().tick() }));
         }
-        None => {
-          let mut chunks = vec![];
-          for r in self.regions.iter() {
-            chunks.extend(r.render_chunks(&RenderPhase::NonDcDs));
-          }
-
-          chunks
+        for r in self.regions.iter() {
+          chunks.extend(r.render_chunks(&RenderPhase::DcDsIter1 { dc_ds_tick: gr.ds_dc().tick(), global_repeat: gr.clone() } ));
         }
+        
+        chunks
+      }
+      None => {
+        let mut chunks = vec![];
+        for r in self.regions.iter() {
+          chunks.extend(r.render_chunks(&RenderPhase::NonDcDs));
+        }
+        
+        chunks
+      }
     }
   }
 }
