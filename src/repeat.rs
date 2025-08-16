@@ -76,7 +76,6 @@ impl Chunk {
 
 pub trait Region: std::fmt::Debug {
   fn to_chunks(&self) -> Vec<Chunk>;
-  fn to_iter1_interval_set(&self) -> IntervalSet<u32>;
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -89,15 +88,7 @@ enum RenderPhase {
 // SimpleRegion can be stored in a compound region.
 trait SimpleRegion: Region {
   fn render_chunks(&self, phase: &RenderPhase) -> Vec<Chunk>;
-  fn to_iter1_chunks(&self, global_repeat: &GlobalRepeat) -> Vec<Chunk> {
-    let sections: IntervalSet<u32> = global_repeat.iter1_interval_set().clone().intersection(
-      &self.to_iter1_interval_set()
-    );
-
-    sections.into_iter().map(|sec| {
-      Chunk::new(sec.lower(), sec.upper() + 1)
-    }).collect()
-  }
+  fn to_iter1_chunks(&self, global_repeat: &GlobalRepeat) -> Vec<Chunk>;
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -107,15 +98,15 @@ impl Region for NullRegion {
   fn to_chunks(&self) -> Vec<Chunk> {
     vec![]
   }
-
-  fn to_iter1_interval_set(&self) -> IntervalSet<u32> {
-    vec![].to_interval_set()
-  }
 }
 
 impl SimpleRegion for NullRegion {
   fn render_chunks(&self, _phase: &RenderPhase) -> Vec<Chunk> {
     vec![]
+  }
+  
+  fn to_iter1_chunks(&self, _: &GlobalRepeat) -> Vec<Chunk> {
+      vec![]
   }
 }
 
@@ -140,15 +131,15 @@ impl SequenceRegion {
   fn end_tick(&self) -> u32 {
     self.tick_range.end
   }
+
+  fn to_iter1_interval_set(&self) -> IntervalSet<u32> {
+    (self.tick_range.start, self.tick_range.end - 1).to_interval_set()
+  }
 }
 
 impl Region for SequenceRegion {
   fn to_chunks(&self) -> Vec<Chunk> {
     self.render_chunks(&RenderPhase::NonDcDs)
-  }
-
-  fn to_iter1_interval_set(&self) -> IntervalSet<u32> {
-    (self.tick_range.start, self.tick_range.end - 1).to_interval_set()
   }
 }
 
@@ -170,6 +161,16 @@ impl SimpleRegion for SequenceRegion {
       }
     }
   }
+  
+  fn to_iter1_chunks(&self, global_repeat: &GlobalRepeat) -> Vec<Chunk> {
+    let sections: IntervalSet<u32> = global_repeat.iter1_interval_set().clone().intersection(
+      &self.to_iter1_interval_set()
+    );
+
+    sections.into_iter().map(|sec| {
+      Chunk::new(sec.lower(), sec.upper() + 1)
+    }).collect()
+  }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -177,13 +178,15 @@ pub struct RepeatRegion {
   region: SequenceRegion,
 }
 
+impl RepeatRegion {
+  fn to_iter1_interval_set(&self) -> IntervalSet<u32> {
+    (self.region.start_tick(), self.region.end_tick() - 1).to_interval_set()
+  }
+}
+
 impl Region for RepeatRegion {
   fn to_chunks(&self) -> Vec<Chunk> {
     self.render_chunks(&RenderPhase::NonDcDs)
-  }
-
-  fn to_iter1_interval_set(&self) -> IntervalSet<u32> {
-    (self.region.start_tick(), self.region.end_tick() - 1).to_interval_set()
   }
 }
 
@@ -213,6 +216,16 @@ impl SimpleRegion for RepeatRegion {
         }
     }
   }
+  
+  fn to_iter1_chunks(&self, global_repeat: &GlobalRepeat) -> Vec<Chunk> {
+    let sections: IntervalSet<u32> = global_repeat.iter1_interval_set().clone().intersection(
+      &self.to_iter1_interval_set()
+    );
+
+    sections.into_iter().map(|sec| {
+      Chunk::new(sec.lower(), sec.upper() + 1)
+    }).collect()
+  }
 }
 
 #[derive(Debug)]
@@ -231,17 +244,17 @@ impl VariationRegion {
   fn last_variation(&self) -> &SequenceRegion {
     &self.variations[self.variations.len() - 1]
   }
-}
-
-impl Region for VariationRegion {
-  fn to_chunks(&self) -> Vec<Chunk> {
-    self.render_chunks(&RenderPhase::NonDcDs)
-  }
 
   fn to_iter1_interval_set(&self) -> IntervalSet<u32> {
     self.common.to_iter1_interval_set().union(
       &self.last_variation().to_iter1_interval_set()
     )
+  }
+}
+
+impl Region for VariationRegion {
+  fn to_chunks(&self) -> Vec<Chunk> {
+    self.render_chunks(&RenderPhase::NonDcDs)
   }
 }
 
@@ -275,6 +288,16 @@ impl SimpleRegion for VariationRegion {
         }
     }
   }
+  
+  fn to_iter1_chunks(&self, global_repeat: &GlobalRepeat) -> Vec<Chunk> {
+    let sections: IntervalSet<u32> = global_repeat.iter1_interval_set().clone().intersection(
+      &self.to_iter1_interval_set()
+    );
+
+    sections.into_iter().map(|sec| {
+      Chunk::new(sec.lower(), sec.upper() + 1)
+    }).collect()
+  }
 }
 
 #[derive(Debug)]
@@ -306,15 +329,6 @@ impl Region for CompoundRegion {
           chunks
         }
     }
-  }
-
-  fn to_iter1_interval_set(&self) -> IntervalSet<u32> {
-    let union = self.regions.iter().fold(
-      vec![].to_interval_set(),
-      |u, e| u.union(&e.to_iter1_interval_set())
-    );
-    
-    self.global_repeat.as_ref().map(|gr| union.intersection(gr.iter1_interval_set())).unwrap_or(union)
   }
 }
 
