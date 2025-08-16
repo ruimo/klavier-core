@@ -82,7 +82,7 @@ pub trait Region: std::fmt::Debug {
 enum RenderPhase {
   NonDcDs,
   DcDsIter0 { dc_ds_tick: u32 },
-  DcDsIter1 { dc_ds_tick: u32, global_repeat: GlobalRepeat },
+  DcDsIter1 { global_repeat: GlobalRepeat },
 }
 
 // SimpleRegion can be stored in a compound region.
@@ -156,7 +156,7 @@ impl SimpleRegion for SequenceRegion {
           vec![]
         }
       }
-      RenderPhase::DcDsIter1 { dc_ds_tick, global_repeat } => {
+      RenderPhase::DcDsIter1 { global_repeat } => {
         self.to_iter1_chunks(global_repeat)
       }
     }
@@ -211,7 +211,7 @@ impl SimpleRegion for RepeatRegion {
             vec![]
           }
         },
-        RenderPhase::DcDsIter1 { dc_ds_tick, global_repeat } => {
+        RenderPhase::DcDsIter1 { global_repeat } => {
           self.to_iter1_chunks(global_repeat)
         }
     }
@@ -283,7 +283,7 @@ impl SimpleRegion for VariationRegion {
             full(&self)
           }
         },
-        RenderPhase::DcDsIter1 { dc_ds_tick, global_repeat } => {
+        RenderPhase::DcDsIter1 { global_repeat } => {
           self.to_iter1_chunks(global_repeat)
         }
     }
@@ -315,7 +315,7 @@ impl Region for CompoundRegion {
           chunks.extend(r.render_chunks(&RenderPhase::DcDsIter0 { dc_ds_tick: gr.ds_dc().tick() }));
         }
         for r in self.regions.iter() {
-          chunks.extend(r.render_chunks(&RenderPhase::DcDsIter1 { dc_ds_tick: gr.ds_dc().tick(), global_repeat: gr.clone() } ));
+          chunks.extend(r.render_chunks(&RenderPhase::DcDsIter1 { global_repeat: gr.clone() } ));
         }
         
         chunks
@@ -1407,7 +1407,7 @@ mod tests {
       .build()?;
       
     let gr: crate::global_repeat::GlobalRepeat = global_repeat.unwrap();
-    let rp = RenderPhase::DcDsIter1 { dc_ds_tick: gr.ds_dc().tick(), global_repeat: gr };
+    let rp = RenderPhase::DcDsIter1 { global_repeat: gr };
     let chunks = seq_region.render_chunks(&rp);
 
     assert_eq!(chunks.len(), 1);
