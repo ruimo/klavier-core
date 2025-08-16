@@ -83,14 +83,14 @@ pub trait Region: std::fmt::Debug {
 enum RenderPhase {
   NonDcDs,
   DcDsIter0 { dc_ds_tick: u32 },
-  DcDsIter1(GlobalRepeat),
+  DcDsIter1 { dc_ds_tick: u32, global_repeat: GlobalRepeat },
 }
 
 // SimpleRegion can be stored in a compound region.
 trait SimpleRegion: Region {
   fn render_chunks(&self, phase: &RenderPhase) -> Vec<Chunk>;
   fn to_iter1_chunks(&self, global_repeat: &GlobalRepeat) -> Vec<Chunk> {
-    let sections = global_repeat.iter1_interval_set().clone().intersection(
+    let sections: IntervalSet<u32> = global_repeat.iter1_interval_set().clone().intersection(
       &self.to_iter1_interval_set()
     );
 
@@ -165,7 +165,7 @@ impl SimpleRegion for SequenceRegion {
           vec![]
         }
       }
-      RenderPhase::DcDsIter1(global_repeat) => {
+      RenderPhase::DcDsIter1 { dc_ds_tick, global_repeat } => {
         self.to_iter1_chunks(global_repeat)
       }
     }
@@ -208,7 +208,7 @@ impl SimpleRegion for RepeatRegion {
             vec![]
           }
         },
-        RenderPhase::DcDsIter1(global_repeat) => {
+        RenderPhase::DcDsIter1 { dc_ds_tick, global_repeat } => {
           self.to_iter1_chunks(global_repeat)
         }
     }
@@ -270,7 +270,7 @@ impl SimpleRegion for VariationRegion {
             full(&self)
           }
         },
-        RenderPhase::DcDsIter1(global_repeat) => {
+        RenderPhase::DcDsIter1 { dc_ds_tick, global_repeat } => {
           self.to_iter1_chunks(global_repeat)
         }
     }
@@ -292,7 +292,7 @@ impl Region for CompoundRegion {
             chunks.extend(r.render_chunks(&RenderPhase::DcDsIter0 { dc_ds_tick: gr.ds_dc().tick() }));
           }
           for r in self.regions.iter() {
-            chunks.extend(r.render_chunks(&RenderPhase::DcDsIter1(gr.clone())));
+            chunks.extend(r.render_chunks(&RenderPhase::DcDsIter1 { dc_ds_tick: gr.ds_dc().tick(), global_repeat: gr.clone() } ));
           }
 
           chunks
@@ -1391,8 +1391,9 @@ mod tests {
       .adding_dc(400, 100)?
       .adding_first_bar_len(30)?
       .build()?;
-
-    let rp = RenderPhase::DcDsIter1(global_repeat.unwrap());
+      
+    let gr: crate::global_repeat::GlobalRepeat = global_repeat.unwrap();
+    let rp = RenderPhase::DcDsIter1 { dc_ds_tick: gr.ds_dc().tick(), global_repeat: gr };
     let chunks = seq_region.render_chunks(&rp);
 
     assert_eq!(chunks.len(), 1);

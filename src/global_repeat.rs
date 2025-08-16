@@ -1,6 +1,6 @@
-use error_stack::{Report, report};
+use error_stack::report;
 use interval::{IntervalSet, interval_set::ToIntervalSet};
-use error_stack::{Result, ResultExt};
+use error_stack::Result;
 use crate::{rhythm::Rhythm, repeat::RenderRegionError, bar::{Bar, Repeat}, have_start_tick::HaveBaseStartTick};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -18,7 +18,7 @@ pub enum DsDc {
 impl DsDc {
   pub fn tick(self) -> u32 {
     match self {
-      DsDc::Dc { tick, len } => tick,
+      DsDc::Dc { tick, len: _ } => tick,
       DsDc::Ds { tick } => tick,
     }
   }
@@ -77,16 +77,16 @@ impl GlobalRepeatBuilder {
     }
   }
 
-  pub fn adding_dc(mut self, tick: u32, len: u32) -> Result<Self, RenderRegionError> {
+  pub fn adding_dc(mut self, dc_loc: u32, first_bar_len: u32) -> Result<Self, RenderRegionError> {
     match self.ds_dc {
         None => {
-          self.ds_dc = Some(DsDc::Dc { tick, len });
+          self.ds_dc = Some(DsDc::Dc { tick: dc_loc, len: first_bar_len });
           Ok(self)
         }
-        Some(DsDc::Dc { tick: prev_tick, len }) =>
-          Err(report!(RenderRegionError::DuplicatedDsDc { tick: [prev_tick, tick] })),
+        Some(DsDc::Dc { tick: prev_tick, len: _ }) =>
+          Err(report!(RenderRegionError::DuplicatedDsDc { tick: [prev_tick, dc_loc] })),
         Some(DsDc::Ds { tick: prev_tick }) =>
-          Err(report!(RenderRegionError::DuplicatedDsDc { tick: [prev_tick, tick] })),
+          Err(report!(RenderRegionError::DuplicatedDsDc { tick: [prev_tick, dc_loc] })),
       }
   }
 
@@ -96,7 +96,7 @@ impl GlobalRepeatBuilder {
           self.ds_dc = Some(DsDc::Ds { tick });
           Ok(self)
         }
-        Some(DsDc::Dc { tick: prev_tick, len }) =>
+        Some(DsDc::Dc { tick: prev_tick, len: _ }) =>
           Err(report!(RenderRegionError::DuplicatedDsDc { tick: [prev_tick, tick] })),
         Some(DsDc::Ds{ tick: prev_tick } ) =>
           Err(report!(RenderRegionError::DuplicatedDsDc { tick: [prev_tick, tick] })),
