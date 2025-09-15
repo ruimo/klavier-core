@@ -786,11 +786,11 @@ mod tests {
     assert_eq!(to_accum_tick(0, 3, &by_accum_tick), Err(ToAccumTickError::CannotFind { specified_iter: PlayIter::new(3), max_iter: 2 }));
   }
 
-  // Non auftakt.
+  // Auftakt.
   // 0    480         580       730        880       1030      1180    1280
   //   A   |[1]  B   |[1]   C   |[2]   D   |[2]   E   |Fine F   |   G   |DC
   //
-  //   A   |     B    |     C   |   A  |   D   |   E   |   F   |   G   |  A  |   D   |   E   |
+  //   A   |     B    |     C   |   A  |   D   |   E   |   F   |   G   |   D   |   E   |
   #[test]
   fn simple_var_dc() {
     let bars = vec![
@@ -803,24 +803,22 @@ mod tests {
       Bar::new(1280, None, None, repeat_set!(Repeat::Dc)),
     ];
 
-    let (region, warnings) = render_region(Rhythm::new(2, 4), bars.iter()).unwrap();
+    let (region, _) = render_region(Rhythm::new(2, 4), bars.iter()).unwrap();
     let chunks = region.to_chunks();
-    assert_eq!(chunks.len(), 7);
+    assert_eq!(chunks.len(), 6);
     assert_eq!(chunks[0], Chunk::new(0, 480));
     assert_eq!(chunks[1], Chunk::new(480, 730));
     assert_eq!(chunks[2], Chunk::new(0, 480));
     assert_eq!(chunks[3], Chunk::new(730, 1030));
     assert_eq!(chunks[4], Chunk::new(1030, 1280));
-    assert_eq!(chunks[5], Chunk::new(0, 480));
-    assert_eq!(chunks[6], Chunk::new(730, 1030));
+    assert_eq!(chunks[5], Chunk::new(730, 1030));
 
     let chunks = Chunk::optimize(&chunks);
-    assert_eq!(chunks.len(), 5);
+    assert_eq!(chunks.len(), 4);
     assert_eq!(chunks[0], Chunk::new(0, 730));
     assert_eq!(chunks[1], Chunk::new(0, 480));
     assert_eq!(chunks[2], Chunk::new(730, 1280));
-    assert_eq!(chunks[3], Chunk::new(0, 480));
-    assert_eq!(chunks[4], Chunk::new(730, 1030));
+    assert_eq!(chunks[3], Chunk::new(730, 1030));
 
     let by_accum_tick = Chunk::by_accum_tick(&chunks);
     assert_eq!(to_accum_tick(0, 1, &by_accum_tick).unwrap(), 0);
@@ -828,9 +826,7 @@ mod tests {
     assert_eq!(to_accum_tick(400, 2, &by_accum_tick).unwrap(), 730 + 400);
     assert_eq!(to_accum_tick(800, 1, &by_accum_tick).unwrap(), 730 + 480 + (800 - 730));
     assert_eq!(to_accum_tick(1180, 1, &by_accum_tick).unwrap(), 730 + 480 + (1180 - 730));
-    assert_eq!(to_accum_tick(0, 3, &by_accum_tick).unwrap(), 730 + 480 + (1280 - 730));
-    assert_eq!(to_accum_tick(0, 4, &by_accum_tick), Err(ToAccumTickError::CannotFind { specified_iter: PlayIter::new(4), max_iter: 3 }));
-    assert_eq!(to_accum_tick(730, 2, &by_accum_tick).unwrap(), 730 + 480 + (1280 - 730) + 480);
+    assert_eq!(to_accum_tick(730, 2, &by_accum_tick).unwrap(), 730 + 480 + (1280 - 730));
     assert_eq!(to_accum_tick(730, 3, &by_accum_tick), Err(ToAccumTickError::CannotFind { specified_iter: PlayIter::new(3), max_iter: 2 }));
   }
 
@@ -989,7 +985,7 @@ mod tests {
     let (region, warnings) = render_region(Rhythm::new(2, 4), bars.iter()).unwrap();
     let chunks = region.to_chunks();
 
-    assert_eq!(chunks.len(), 20);
+    assert_eq!(chunks.len(), 19);
     let mut z = chunks.iter();
     assert_eq!(*z.next().unwrap(), Chunk::new(0, 240));
     assert_eq!(*z.next().unwrap(), Chunk::new(240, 370));
@@ -1007,7 +1003,6 @@ mod tests {
     assert_eq!(*z.next().unwrap(), Chunk::new(770, 920));
     assert_eq!(*z.next().unwrap(), Chunk::new(770, 920));
     assert_eq!(*z.next().unwrap(), Chunk::new(920, 970));
-    assert_eq!(*z.next().unwrap(), Chunk::new(0, 240));
 
     assert_eq!(*z.next().unwrap(), Chunk::new(240, 370));
     assert_eq!(*z.next().unwrap(), Chunk::new(420, 470));
@@ -1025,7 +1020,7 @@ mod tests {
     assert_eq!(*z.next().unwrap(), Chunk::new(520, 620));
     assert_eq!(*z.next().unwrap(), Chunk::new(670, 920));
     assert_eq!(*z.next().unwrap(), Chunk::new(770, 970));
-    assert_eq!(*z.next().unwrap(), Chunk::new(0, 370));
+    assert_eq!(*z.next().unwrap(), Chunk::new(240, 370));
     assert_eq!(*z.next().unwrap(), Chunk::new(420, 620));
     assert_eq!(*z.next().unwrap(), Chunk::new(670, 720));
     assert_eq!(z.next(), None);
@@ -1066,8 +1061,8 @@ mod tests {
 
   // 0   120          270          370
   //   A  |     B    :|:Fine  C    :| D.C
-  //
-  //   A  |     B     |  A  |     B     |  C   |  C  |   A  |  B  |
+  // Assumed auftakt.
+  //   A  |     B     |  A  |     B     |  C   |  C  |   B  |
   #[test]
   fn fine_and_repeat() {
     let bars = vec![
@@ -1085,7 +1080,7 @@ mod tests {
     assert_eq!(*z.next().unwrap(), Chunk::new(0, 270));
     assert_eq!(*z.next().unwrap(), Chunk::new(270, 370));
     assert_eq!(*z.next().unwrap(), Chunk::new(270, 370));
-    assert_eq!(*z.next().unwrap(), Chunk::new(0, 270));
+    assert_eq!(*z.next().unwrap(), Chunk::new(120, 270));
     assert_eq!(z.next(), None);
 
     let chunks = Chunk::optimize(&chunks);
@@ -1093,14 +1088,15 @@ mod tests {
     assert_eq!(*z.next().unwrap(), Chunk::new(0, 270));
     assert_eq!(*z.next().unwrap(), Chunk::new(0, 370));
     assert_eq!(*z.next().unwrap(), Chunk::new(270, 370));
-    assert_eq!(*z.next().unwrap(), Chunk::new(0, 270));
+    assert_eq!(*z.next().unwrap(), Chunk::new(120, 270));
     assert_eq!(z.next(), None);
   }
 
   // 0 120   170       270   370
   // A |: B :|:Fine C :|: D :|D.C.
   // 
-  // A  B  B   C   C   D   D   A   B 
+  // Assumed auftakt.
+  // A  B  B   C   C   D   D   B 
   #[test]
   fn dc_and_repeat() {
     let bars = vec![
@@ -1112,7 +1108,7 @@ mod tests {
 
     let (region, warnings) = render_region(Rhythm::new(1, 4), bars.iter()).unwrap();
     let chunks = region.to_chunks();
-    assert_eq!(chunks.len(), 9);
+    assert_eq!(chunks.len(), 8);
 
     let mut z = chunks.iter();
     assert_eq!(*z.next().unwrap(), Chunk::new(0, 120));
@@ -1122,7 +1118,6 @@ mod tests {
     assert_eq!(*z.next().unwrap(), Chunk::new(170, 270));
     assert_eq!(*z.next().unwrap(), Chunk::new(270, 370));
     assert_eq!(*z.next().unwrap(), Chunk::new(270, 370));
-    assert_eq!(*z.next().unwrap(), Chunk::new(0, 120));
     assert_eq!(*z.next().unwrap(), Chunk::new(120, 170));
     assert_eq!(z.next(), None);
 
@@ -1132,14 +1127,14 @@ mod tests {
     assert_eq!(*z.next().unwrap(), Chunk::new(120, 270));
     assert_eq!(*z.next().unwrap(), Chunk::new(170, 370));
     assert_eq!(*z.next().unwrap(), Chunk::new(270, 370));
-    assert_eq!(*z.next().unwrap(), Chunk::new(0, 170));
+    assert_eq!(*z.next().unwrap(), Chunk::new(120, 170));
     assert_eq!(z.next(), None);
   }
 
   // 0 120 170  270  370    470
   // A | B |: C | D :|D.C. E |
-  // 
-  // A B C D C D A B C D E
+  // Assumed auftakt.
+  // A B C D C D B C D E
   #[test]
   fn dc_without_fine() {
     let bars = vec![
@@ -1158,7 +1153,7 @@ mod tests {
     assert_eq!(*z.next().unwrap(), Chunk::new(0, 170));
     assert_eq!(*z.next().unwrap(), Chunk::new(170, 370));
     assert_eq!(*z.next().unwrap(), Chunk::new(170, 370));
-    assert_eq!(*z.next().unwrap(), Chunk::new(0, 170));
+    assert_eq!(*z.next().unwrap(), Chunk::new(120, 170));
     assert_eq!(*z.next().unwrap(), Chunk::new(170, 370));
     assert_eq!(*z.next().unwrap(), Chunk::new(370, u32::MAX));
     assert_eq!(z.next(), None);
@@ -1167,7 +1162,7 @@ mod tests {
     let mut z = chunks.iter();
     assert_eq!(*z.next().unwrap(), Chunk::new(0, 370));
     assert_eq!(*z.next().unwrap(), Chunk::new(170, 370));
-    assert_eq!(*z.next().unwrap(), Chunk::new(0, u32::MAX));
+    assert_eq!(*z.next().unwrap(), Chunk::new(120, u32::MAX));
     assert_eq!(z.next(), None);
   }
 
@@ -1428,8 +1423,29 @@ mod tests {
       Bar::new(400, None, None, repeat_set!(Repeat::Dc)),
     ];
 
-    let (region, warnings) = render_region(Rhythm::new(1, 4), bars.iter()).unwrap();
+    let (region, _) = render_region(Rhythm::new(1, 4), bars.iter()).unwrap();
     let chunks = region.to_chunks();
     assert_eq!(chunks.len(), 1);
+  }
+
+  // 0 240   1200      1920
+  // A |  B  | Fine C  |D.C.
+  // 
+  // A  B  C  A  B
+  #[test]
+  fn dc_and_auftakt() {
+    let bars = vec![
+      Bar::new(240, None, None, repeat_set!()),
+      Bar::new(1200, None, None, repeat_set!(Repeat::Fine)),
+      Bar::new(1920, None, None, repeat_set!(Repeat::Dc)),
+    ];
+
+    let (region, _) = render_region(Rhythm::new(4, 4), bars.iter()).unwrap();
+    let chunks = region.to_chunks();
+    assert_eq!(chunks.len(), 2);
+
+    let mut z = chunks.iter();
+    assert_eq!(*z.next().unwrap(), Chunk::new(0, 1920));
+    assert_eq!(*z.next().unwrap(), Chunk::new(0, 1200));
   }
 }

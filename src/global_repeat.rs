@@ -31,17 +31,6 @@ pub enum RenderRegionWarning {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct GlobalRepeatBuilder {
-  pub ds_dc: Option<DsDc>,
-  pub fine: Option<u32>,
-  pub segno: Option<u32>,
-  pub coda: Option<Coda>,
-  pub first_bar_len: Option<u32>,
-  pub top_rhythm: Rhythm,
-  pub warnings: Vec<RenderRegionWarning>,
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct GlobalRepeat {
   ds_dc: DsDc,
   fine: Option<u32>,
@@ -64,6 +53,18 @@ impl GlobalRepeat {
   }
 }
 
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct GlobalRepeatBuilder {
+  pub ds_dc: Option<DsDc>,
+  pub fine: Option<u32>,
+  pub segno: Option<u32>,
+  pub coda: Option<Coda>,
+  pub first_bar_len: Option<u32>,
+  pub top_rhythm: Rhythm,
+  pub warnings: Vec<RenderRegionWarning>,
+  pub prev_bar_tick: Option<u32>,
+}
+
 impl GlobalRepeatBuilder {
   pub fn new(tune_rhythm: Rhythm) -> Self {
     Self {
@@ -74,13 +75,14 @@ impl GlobalRepeatBuilder {
       first_bar_len: None,
       top_rhythm: tune_rhythm,
       warnings: vec![],
+      prev_bar_tick: None,
     }
   }
 
-  pub fn adding_dc(mut self, dc_loc: u32, first_bar_len: u32) -> Result<Self, RenderRegionError> {
+  pub fn adding_dc(mut self, dc_loc: u32, dc_bar_len: u32) -> Result<Self, RenderRegionError> {
     match self.ds_dc {
         None => {
-          self.ds_dc = Some(DsDc::Dc { tick: dc_loc, len: first_bar_len });
+          self.ds_dc = Some(DsDc::Dc { tick: dc_loc, len: dc_bar_len });
           Ok(self)
         }
         Some(DsDc::Dc { tick: prev_tick, len: _ }) =>
@@ -160,9 +162,10 @@ impl GlobalRepeatBuilder {
     }
 
     if repeats.contains(Repeat::Dc) {
-      match self.first_bar_len {
-        Some(first_bar_len) => {
-          self = self.adding_dc(tick, first_bar_len)?;
+      match self.prev_bar_tick {
+        Some(prev_bar_tick) => {
+          let dc_bar_len = tick - prev_bar_tick;
+          self = self.adding_dc(tick, dc_bar_len)?;
         }
         None => {
           self = self.adding_dc(tick, 0)?;
@@ -174,7 +177,8 @@ impl GlobalRepeatBuilder {
     self = if repeats.contains(Repeat::Fine) { self.adding_fine(tick)? } else { self };
     self = if repeats.contains(Repeat::Segno) { self.adding_segno(tick)? } else { self };
     self = if repeats.contains(Repeat::Coda) { self.adding_coda(tick)? } else { self };
-
+    
+    self.prev_bar_tick = Some(tick);
     Ok(self)
   }
 
