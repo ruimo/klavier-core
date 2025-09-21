@@ -1,8 +1,7 @@
 use std::{ops::Range, fmt::Display};
-use error_stack::{Context, report};
+use error_stack::{Context, Report, report};
 use gcollections::ops::{Intersection, Union, Bounded};
 use interval::{IntervalSet, interval_set::ToIntervalSet};
-use error_stack::Result;
 use klavier_helper::store::Store;
 use crate::{bar::{Bar, VarIndex, Repeat}, rhythm::Rhythm, have_start_tick::HaveBaseStartTick, global_repeat::{GlobalRepeat, RenderRegionWarning, GlobalRepeatBuilder}};
 
@@ -379,7 +378,7 @@ impl Display for RenderRegionError {
 
 pub fn render_region<'a>(
   tune_rhythm: Rhythm, bars: impl Iterator<Item = &'a Bar>
-) -> Result<(Box<dyn Region>, Vec<RenderRegionWarning>), RenderRegionError> {
+) -> Result<(Box<dyn Region>, Vec<RenderRegionWarning>), Report<RenderRegionError>> {
   fn create_variation(start_tick: u32, region_start_ticks: Vec<u32>, end_tick: u32) -> Box<dyn SimpleRegion> {
     let mut variations: Vec<SequenceRegion> = vec![];
     let mut iter = region_start_ticks.iter();
@@ -517,11 +516,12 @@ pub fn render_region<'a>(
 
 #[cfg(test)]
 mod tests {
-  use crate::{bar::{Bar, Repeat}, play_iter::PlayIter, play_start_tick::{PlayStartTick, ToAccumTickError}, repeat::{render_region, Chunk, GlobalRepeatBuilder, RenderRegionError, SimpleRegion}, rhythm::Rhythm};
+  use error_stack::Report;
+
+use crate::{bar::{Bar, Repeat}, play_iter::PlayIter, play_start_tick::{PlayStartTick, ToAccumTickError}, repeat::{render_region, Chunk, GlobalRepeatBuilder, RenderRegionError, SimpleRegion}, rhythm::Rhythm};
   use crate::repeat_set;
   use super::{AccumTick, RenderPhase, SequenceRegion};
   use crate::bar::RepeatSet;
-  use error_stack::Result;
 
   fn to_accum_tick(tick: u32, iter: u8, chunks: &[(AccumTick, Chunk)]) -> std::result::Result<AccumTick, ToAccumTickError> {
     PlayStartTick::new(tick, iter).to_accum_tick(chunks)
@@ -1393,7 +1393,7 @@ mod tests {
   }
 
   #[test]  
-  fn render_sequence_region_when_dcds_iter1() -> Result<(), RenderRegionError> {
+  fn render_sequence_region_when_dcds_iter1() -> Result<(), Report<RenderRegionError>> {
     let seq_region = SequenceRegion {
       tick_range: 100..200
     };

@@ -1,8 +1,8 @@
 use std::{collections::{BTreeMap, HashMap}, rc::Rc};
+use error_stack::Report;
 use klavier_helper::{bag_store::BagStore, sliding, store::{self, Store}};
 use crate::{bar::Bar, bar::RepeatSet, channel::Channel, ctrl_chg::CtrlChg, duration::Duration, global_repeat::RenderRegionWarning, have_start_tick::HaveStartTick, key::Key, note::Note, octave::Octave, pitch::Pitch, repeat::{AccumTick, Chunk, RenderRegionError, render_region}, repeat_set, rhythm::Rhythm, sharp_flat::SharpFlat, solfa::Solfa, tempo::{Tempo, TempoValue}, velocity::Velocity};
 use crate::project::{tempo_at, ModelChangeMetadata};
-use error_stack::Result;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MidiSrc {
@@ -316,7 +316,7 @@ pub fn create_midi_events(
     tempo_repo: &Store<u32, Tempo, ModelChangeMetadata>,
     dumper_repo: &Store<u32, CtrlChg, ModelChangeMetadata>,
     soft_repo: &Store<u32, CtrlChg, ModelChangeMetadata>,
-) -> Result<(MidiEvents, Vec<RenderRegionWarning>), RenderRegionError> {
+) -> Result<(MidiEvents, Vec<RenderRegionWarning>), Report<RenderRegionError>> {
     let key_table = create_key_table(top_key, bar_repo);
     let mut key_finder = key_table.finder();
     let notes_by_base_start_tick = notes_by_base_start_tick(&note_repo);

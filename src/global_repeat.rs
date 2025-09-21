@@ -1,6 +1,5 @@
-use error_stack::report;
+use error_stack::{Report, report};
 use interval::{IntervalSet, interval_set::ToIntervalSet};
-use error_stack::Result;
 use crate::{rhythm::Rhythm, repeat::RenderRegionError, bar::{Bar, Repeat}, have_start_tick::HaveBaseStartTick};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -79,7 +78,7 @@ impl GlobalRepeatBuilder {
     }
   }
 
-  pub fn adding_dc(mut self, dc_loc: u32, dc_bar_len: u32) -> Result<Self, RenderRegionError> {
+  pub fn adding_dc(mut self, dc_loc: u32, dc_bar_len: u32) -> Result<Self, Report<RenderRegionError>> {
     match self.ds_dc {
         None => {
           self.ds_dc = Some(DsDc::Dc { tick: dc_loc, len: dc_bar_len });
@@ -92,7 +91,7 @@ impl GlobalRepeatBuilder {
       }
   }
 
-  fn adding_ds(mut self, tick: u32) -> Result<Self, RenderRegionError> {
+  fn adding_ds(mut self, tick: u32) -> Result<Self, Report<RenderRegionError>> {
     match self.ds_dc {
         None => {
           self.ds_dc = Some(DsDc::Ds { tick });
@@ -105,7 +104,7 @@ impl GlobalRepeatBuilder {
       }
   }
 
-  fn adding_fine(mut self, tick: u32) -> Result<Self, RenderRegionError> {
+  fn adding_fine(mut self, tick: u32) -> Result<Self, Report<RenderRegionError>> {
     match self.fine {
         Some(prev_tick) =>
           Err(report!(RenderRegionError::DuplicatedFine { tick: [prev_tick, tick] })),
@@ -116,7 +115,7 @@ impl GlobalRepeatBuilder {
     }
   }
 
-  pub fn adding_segno(mut self, tick: u32) -> Result<Self, RenderRegionError> {
+  pub fn adding_segno(mut self, tick: u32) -> Result<Self, Report<RenderRegionError>> {
     match self.segno {
       Some(prev_tick) =>
         Err(report!(RenderRegionError::DuplicatedSegno { tick: [prev_tick, tick] })),
@@ -127,7 +126,7 @@ impl GlobalRepeatBuilder {
     }
   }
 
-  fn adding_coda(mut self, tick: u32) -> Result<Self, RenderRegionError> {
+  fn adding_coda(mut self, tick: u32) -> Result<Self, Report<RenderRegionError>> {
     match self.coda {
       None => {
         self.coda = Some(Coda::One(tick));
@@ -147,7 +146,7 @@ impl GlobalRepeatBuilder {
     Ok(self)
   }
 
-  pub fn on_bar(mut self, bar: &Bar) -> Result<Self, RenderRegionError> {
+  pub fn on_bar(mut self, bar: &Bar) -> Result<Self, Report<RenderRegionError>> {
     let repeats = bar.repeats;
     let tick = bar.base_start_tick();
 
@@ -182,7 +181,7 @@ impl GlobalRepeatBuilder {
     Ok(self)
   }
 
-  fn check_coda_pos(coda_from: u32, coda_to: u32, fine: Option<u32>) -> Result<(), RenderRegionError> {
+  fn check_coda_pos(coda_from: u32, coda_to: u32, fine: Option<u32>) -> Result<(), Report<RenderRegionError>> {
     if let Some(fine) = fine {
       if fine < coda_to {
         Err(report!(RenderRegionError::CodaAfterFine { coda_from, coda_to, fine }))
@@ -210,7 +209,7 @@ impl GlobalRepeatBuilder {
     }.to_interval_set()
   }
 
-  pub fn build(self) -> Result<(Option<GlobalRepeat>, Vec<RenderRegionWarning>), RenderRegionError> {
+  pub fn build(self) -> Result<(Option<GlobalRepeat>, Vec<RenderRegionWarning>), Report<RenderRegionError>> {
     let mut warnings = self.warnings;
 
     match self.ds_dc {
@@ -300,13 +299,13 @@ impl GlobalRepeatBuilder {
 
 #[cfg(test)]
 mod tests {
-    use error_stack::Result;
+    use error_stack::Report;
     use interval::interval_set::*;
     use crate::{rhythm::Rhythm, repeat::RenderRegionError};
     use super::GlobalRepeatBuilder;
 
   #[test]
-  fn dc_without_fine() -> Result<(), RenderRegionError> {
+  fn dc_without_fine() -> Result<(), Report<RenderRegionError>> {
     let (gr, _warn) = GlobalRepeatBuilder::new(Rhythm::new(4, 4))
       .adding_dc(4000, 240 * 4)?
       .adding_first_bar_len(240 * 4)?
@@ -319,7 +318,7 @@ mod tests {
   }
 
   #[test]
-  fn dc_with_fine() -> Result<(), RenderRegionError> {
+  fn dc_with_fine() -> Result<(), Report<RenderRegionError>> {
     let (gr, _warn) = GlobalRepeatBuilder::new(Rhythm::new(4, 4))
       .adding_dc(8000, 240 * 4)?
       .adding_fine(4000)?
@@ -333,7 +332,7 @@ mod tests {
   }
 
   #[test]
-  fn dc_with_fine_auftakt() -> Result<(), RenderRegionError> {
+  fn dc_with_fine_auftakt() -> Result<(), Report<RenderRegionError>> {
     let (gr, _warn) = GlobalRepeatBuilder::new(Rhythm::new(4, 4))
       .adding_dc(4000, 240 * 4)?
       .adding_fine(2000)?
@@ -347,7 +346,7 @@ mod tests {
   }
 
   #[test]
-  fn dc_with_coda_fine_auftakt() -> Result<(), RenderRegionError> {
+  fn dc_with_coda_fine_auftakt() -> Result<(), Report<RenderRegionError>> {
     let (gr, _warn) = GlobalRepeatBuilder::new(Rhythm::new(4, 4))
       .adding_dc(4000, 240 * 4)?
       .adding_coda(1000)?
@@ -363,7 +362,7 @@ mod tests {
   }
 
   #[test]
-  fn ds_without_fine() -> Result<(), RenderRegionError> {
+  fn ds_without_fine() -> Result<(), Report<RenderRegionError>> {
     let (gr, _warn) = GlobalRepeatBuilder::new(Rhythm::new(4, 4))
       .adding_ds(4000)?
       .adding_segno(100)?
@@ -376,7 +375,7 @@ mod tests {
   }
 
   #[test]
-  fn ds_with_fine() -> Result<(), RenderRegionError> {
+  fn ds_with_fine() -> Result<(), Report<RenderRegionError>> {
     let (gr, _warn) = GlobalRepeatBuilder::new(Rhythm::new(4, 4))
       .adding_ds(8000)?
       .adding_fine(4000)?
@@ -390,7 +389,7 @@ mod tests {
   }
 
   #[test]
-  fn ds_with_coda_fine() -> Result<(), RenderRegionError> {
+  fn ds_with_coda_fine() -> Result<(), Report<RenderRegionError>> {
     let (gr, _warn) = GlobalRepeatBuilder::new(Rhythm::new(4, 4))
       .adding_ds(4000)?
       .adding_coda(1000)?
