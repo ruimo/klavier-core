@@ -520,7 +520,7 @@ pub enum ProjectCmdErr {
     NoOp,
 }
 
-impl error_stack::Context for ProjectCmdErr {}
+impl core::error::Error for ProjectCmdErr {}
 
 impl std::fmt::Display for ProjectCmdErr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

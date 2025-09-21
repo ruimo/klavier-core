@@ -1,5 +1,5 @@
 use std::{ops::Range, fmt::Display};
-use error_stack::{Context, Report, report};
+use error_stack::{Report, report};
 use gcollections::ops::{Intersection, Union, Bounded};
 use interval::{IntervalSet, interval_set::ToIntervalSet};
 use klavier_helper::store::Store;
@@ -368,7 +368,7 @@ pub enum RenderRegionError {
   CodaAfterFine { coda_from: u32, coda_to: u32, fine: u32 },
 }
 
-impl Context for RenderRegionError {}
+impl core::error::Error for RenderRegionError {}
 
 impl Display for RenderRegionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
