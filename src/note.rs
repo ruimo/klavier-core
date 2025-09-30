@@ -26,7 +26,7 @@ pub enum TickError {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct InvalidDot(i32);
 
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(serde::Deserialize, serde::Serialize, Default)]
 #[derive(Debug, PartialEq, Eq, Clone, Builder)]
 #[builder(default)]
 pub struct Note {
@@ -43,32 +43,6 @@ pub struct Note {
 }
 
 impl Note {
-    pub fn new(
-        base_start_tick: u32,
-        pitch: Pitch,
-        duration: Duration,
-        tie: bool,
-        tied: bool,
-        base_velocity: Velocity,
-        start_tick_trimmer: Trimmer,
-        duration_trimmer: RateTrimmer,
-        velocity_trimmer: Trimmer,
-        channel: Channel,
-    ) -> Self {
-        Self {
-            base_start_tick,
-            pitch: pitch,
-            duration: duration,
-            tie: tie,
-            tied: tied,
-            base_velocity,
-            start_tick_trimmer,
-            duration_trimmer,
-            velocity_trimmer,
-            channel
-        }
-    }
-    
     #[inline]
     pub fn start_tick(&self) -> u32 {
         let tick = self.base_start_tick as i64 + self.start_tick_trimmer.sum() as i64;
@@ -121,19 +95,17 @@ impl Note {
         let tick = self.base_start_tick as i64 + tick_delta as i64;
         if tick < 0 {
             Err(TickError::Minus)
+        } else if is_trim {
+            let mut copied = self.clone();
+            copied.start_tick_trimmer = self.start_tick_trimmer.added(tick_delta);
+            Ok(copied)
         } else {
-            if is_trim {
-                let mut copied = self.clone();
-                copied.start_tick_trimmer = self.start_tick_trimmer.added(tick_delta);
-                Ok(copied)
-            } else {
-                Ok(
-                    Self {
-                        base_start_tick: tick as u32,
-                        ..*self
-                    }
-                )
-            }
+            Ok(
+                Self {
+                    base_start_tick: tick as u32,
+                    ..*self
+                }
+            )
         }
     }
     
@@ -142,7 +114,7 @@ impl Note {
         let pitch = self.pitch.with_score_offset_delta(score_offset_delta).unwrap();
         Self {
             base_start_tick: tick as u32,
-            pitch: pitch,
+            pitch,
             ..*self
         }
     }
@@ -164,7 +136,7 @@ impl Note {
     pub fn toggle_sharp(&self) -> Result<Self, PitchError> {
         self.pitch.toggle_sharp().map(|pitch| {
             Self {
-                pitch: pitch,
+                pitch,
                 ..*self
             }
         })
@@ -173,7 +145,7 @@ impl Note {
     pub fn toggle_flat(&self) -> Result<Self, PitchError> {
         self.pitch.toggle_flat().map(|pitch| {
             Self {
-                pitch: pitch,
+                pitch,
                 ..*self
             }
         })
@@ -182,7 +154,7 @@ impl Note {
     pub fn toggle_natural(&self) -> Result<Self, PitchError> {
         self.pitch.toggle_natural().map(|pitch| {
             Self {
-                pitch: pitch,
+                pitch,
                 ..*self
             }
         })
@@ -219,27 +191,10 @@ impl Note {
 
     pub fn velocity(&self) -> Velocity {
         let mut v = self.base_velocity.as_u8() as i32;
-        v = v + self.velocity_trimmer.sum();
+        v += self.velocity_trimmer.sum();
         if v < 0 { velocity::MIN }
         else if 127 < v { velocity::MAX }
         else { Velocity::new(v as u8) }
-    }
-}
-
-impl Default for Note {
-    fn default() -> Self {
-        Self {
-            base_start_tick: Default::default(),
-            pitch: Default::default(),
-            duration: Default::default(),
-            tie: Default::default(),
-            tied: Default::default(),
-            base_velocity: Default::default(),
-            start_tick_trimmer: Default::default(),
-            duration_trimmer: Default::default(),
-            velocity_trimmer: Default::default(),
-            channel: Default::default(),
-        }
     }
 }
 
@@ -248,6 +203,7 @@ impl Note {
     pub const MAX_SCORE_OFFSET: i32 = 76;
     pub const TICK_CLIPPER: Clipper<i32> = clipper::for_i32(0, i32::MAX);
     pub const VELOCITY_CLIPPER: Clipper<i16> = clipper::for_i16(0, 127);
+    #[allow(clippy::declare_interior_mutable_const)]
     pub const LONGEST_TICK_LEN: Lazy<u32> = Lazy::new(||
         Duration::new(Numerator::Whole, Denominator::from_value(2).unwrap(), Dots::SEVEN).tick_length() * (PercentU16::MAX.to_f32() as u32)
     );
@@ -281,72 +237,56 @@ impl HaveStartTick for Rc<Note> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{note::Note, pitch::{Pitch, self}, solfa::Solfa, octave::Octave, sharp_flat::SharpFlat, duration::{Duration, Numerator, Denominator, Dots}, trimmer::{Trimmer, RateTrimmer}, velocity::Velocity, channel::Channel};
+    use crate::{note::Note, pitch::{Pitch, self}, solfa::Solfa, octave::Octave, sharp_flat::SharpFlat, duration::{Duration, Numerator, Denominator, Dots}, trimmer::RateTrimmer, velocity::Velocity};
 
     use super::NoteBuilder;
     
     #[test]
     fn tick_len() {
-        let note = Note::new(
-            123, // base_start_tick
-            Pitch::new(Solfa::A, Octave::Oct1, SharpFlat::Null),
-            Duration::new(Numerator::Half, Denominator::from_value(2).unwrap(), Dots::ZERO),
-            false, // tie
-            false, // tied
-            Velocity::new(10), // base_velocity
-            Trimmer::ZERO, // start_tick_trimmer
-            RateTrimmer::new(1.0, 0.5, 2.0, 1.5), // duration_trimmer
-            Trimmer::ZERO, // velocity_trimmer
-            Channel::default(),
-        );
+        let note = Note {
+            base_start_tick: 123,
+            pitch: Pitch::new(Solfa::A, Octave::Oct1, SharpFlat::Null),
+            duration: Duration::new(Numerator::Half, Denominator::from_value(2).unwrap(), Dots::ZERO),
+            base_velocity: Velocity::new(10),
+            duration_trimmer: RateTrimmer::new(1.0, 0.5, 2.0, 1.5), // duration_trimmer
+            ..Default::default()
+        };
         assert_eq!(note.tick_len(), 720);
     }
     
     #[test]
     fn up_score_offset() {
-        let note = Note::new(
-            123, // base_start_tick
-            pitch::MAX,
-            Duration::new(Numerator::Half, Denominator::from_value(2).unwrap(), Dots::ZERO),
-            false, // tie
-            false, // tied
-            Velocity::new(10), // base_velocity
-            Trimmer::ZERO, // start_tick_trimmer
-            RateTrimmer::new(1.0, 0.5, 2.0, 1.5), // duration_trimmer
-            Trimmer::ZERO, // velocity_trimmer
-            Channel::default(),
-        );
+        let note = Note {
+            base_start_tick: 123,
+            pitch: pitch::MAX,
+            duration: Duration::new(Numerator::Half, Denominator::from_value(2).unwrap(), Dots::ZERO),
+            base_velocity: Velocity::new(10),
+            duration_trimmer: RateTrimmer::new(1.0, 0.5, 2.0, 1.5),
+            ..Default::default()
+        };
         assert!(note.up_score_offset().is_err());
         
-        let note = Note::new(
-            123, // base_start_tick
-            Pitch::new(Solfa::A, Octave::Oct1, SharpFlat::Null),
-            Duration::new(Numerator::Half, Denominator::from_value(2).unwrap(), Dots::ZERO),
-            false, // tie
-            false, // tied
-            Velocity::new(10), // base_velocity
-            Trimmer::ZERO, // start_tick_trimmer
-            RateTrimmer::new(1.0, 0.5, 2.0, 1.5), // duration_trimmer
-            Trimmer::ZERO, // velocity_trimmer
-            Channel::default(),
-        );
+        let note = Note {
+            base_start_tick: 123,
+            pitch: Pitch::new(Solfa::A, Octave::Oct1, SharpFlat::Null),
+            duration: Duration::new(Numerator::Half, Denominator::from_value(2).unwrap(), Dots::ZERO),
+            base_velocity: Velocity::new(10),
+            duration_trimmer: RateTrimmer::new(1.0, 0.5, 2.0, 1.5),
+            ..Default::default()
+        };
         assert_eq!(note.up_score_offset().unwrap().pitch, Pitch::new(Solfa::B, Octave::Oct1, SharpFlat::Null));
     }
     
     #[test]
     fn with_tick_added() {
-        let note = Note::new(
-            123, // base_start_tick
-            pitch::MAX,
-            Duration::new(Numerator::Half, Denominator::from_value(2).unwrap(), Dots::ZERO),
-            false, // tie
-            false, // tied
-            Velocity::new(10), // base_velocity
-            Trimmer::ZERO, // start_tick_trimmer
-            RateTrimmer::new(1.0, 0.5, 2.0, 1.5), // duration_trimmer
-            Trimmer::ZERO, // velocity_trimmer
-            Channel::default(),
-        );
+        let note = Note {
+            base_start_tick: 123,
+            pitch: pitch::MAX,
+            duration: Duration::new(Numerator::Half, Denominator::from_value(2).unwrap(), Dots::ZERO),
+            base_velocity: Velocity::new(10),
+            duration_trimmer: RateTrimmer::new(1.0, 0.5, 2.0, 1.5),
+            ..Default::default()
+        };
         assert_eq!(note.with_tick_added(10, true).unwrap().start_tick(), 133);
         assert_eq!(note.with_tick_added(-122, true).unwrap().start_tick(), 1);
         assert_eq!(note.with_tick_added(-123, true).unwrap().start_tick(), 0);

@@ -128,7 +128,7 @@ impl Models {
     pub fn from_clipboard_text(json: String) -> Result<Self, FromClipboardTextErr> {
         let mut stream = serde_json::Deserializer::from_str(&json).into_iter::<Value>();
         match stream.next() {
-            None => return Err(FromClipboardTextErr::EmptyString),
+            None => Err(FromClipboardTextErr::EmptyString),
             Some(Ok(ver)) =>
                 if let Value::Number(ver_no) = ver {
                     if let Some(v) = ver_no.as_u64() {
@@ -208,7 +208,7 @@ impl ModelChanges {
 
 #[cfg(test)]
 mod clipboard_tests {
-    use crate::{models::{Models, FromClipboardTextErr}, note::Note, pitch::Pitch, solfa::Solfa, octave::Octave, sharp_flat::SharpFlat, duration::{self, Duration, Dots}, velocity::Velocity, trimmer::{Trimmer, RateTrimmer}, bar::{Bar, RepeatSet}, tempo::Tempo, ctrl_chg::CtrlChg, channel::Channel};
+    use crate::{models::{Models, FromClipboardTextErr}, note::Note, pitch::Pitch, solfa::Solfa, octave::Octave, sharp_flat::SharpFlat, duration::{self, Duration, Dots}, velocity::Velocity, bar::{Bar, RepeatSet}, tempo::Tempo, ctrl_chg::CtrlChg, channel::Channel};
 
     #[test]
     fn parse_empty() {
@@ -239,14 +239,14 @@ mod clipboard_tests {
     #[test]
     fn normal_case() {
         let pitch = Pitch::new(Solfa::C, Octave::Oct0, SharpFlat::Null);
-        let note = Note::new(
-            100, pitch,
-            Duration::new(duration::Numerator::Quarter, duration::Denominator::from_value(2).unwrap(), Dots::ONE),
-            false, false, Velocity::new(10), Trimmer::ZERO,
-            RateTrimmer::new(1.0, 1.0, 1.0, 1.0),
-            Trimmer::ZERO,
-            Channel::default(),
-        );
+        let note = Note {
+            base_start_tick: 100,
+            pitch,
+            duration: Duration::new(duration::Numerator::Quarter, duration::Denominator::from_value(2).unwrap(), Dots::ONE),
+            tie: false, tied: false,
+            base_velocity: Velocity::new(10),
+            ..Default::default()
+        };
 
         let bar = Bar::new(
             100,
@@ -268,14 +268,14 @@ mod clipboard_tests {
     #[test]
     fn move_to_tick() {
         let pitch = Pitch::new(Solfa::C, Octave::Oct0, SharpFlat::Null);
-        let note = Note::new(
-            100, pitch,
-            Duration::new(duration::Numerator::Quarter, duration::Denominator::from_value(2).unwrap(), Dots::ONE),
-            false, false, Velocity::new(10), Trimmer::ZERO,
-            RateTrimmer::new(1.0, 1.0, 1.0, 1.0),
-            Trimmer::ZERO,
-            Channel::default(),
-        );
+        let note = Note {
+            base_start_tick: 100,
+            pitch,
+            duration: Duration::new(duration::Numerator::Quarter, duration::Denominator::from_value(2).unwrap(), Dots::ONE),
+            tie: false, tied: false,
+            base_velocity: Velocity::new(10),
+            ..Default::default()
+        };
 
         let bar = Bar::new(
             110,

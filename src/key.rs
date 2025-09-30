@@ -27,8 +27,9 @@ impl Key {
     pub const ALL: [Key; 15] = [
         Self::NONE, Self::SHARP_1, Self::SHARP_2, Self::SHARP_3, Self::SHARP_4, Self::SHARP_5, Self::SHARP_6, Self::SHARP_7,
         Self::FLAT_1, Self::FLAT_2, Self::FLAT_3, Self::FLAT_4, Self::FLAT_5, Self::FLAT_6, Self::FLAT_7
-    ];
-
+        ];
+        
+    #[allow(clippy::declare_interior_mutable_const)]
     pub const SOLFAS: Lazy<HashMap<Key, HashSet<Solfa>>> = Lazy::new(||
         HashMap::from([
             (Self::NONE, HashSet::from([])),

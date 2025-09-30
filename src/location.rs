@@ -25,9 +25,11 @@ impl Display for Location {
 }
 
 
+#[allow(clippy::declare_interior_mutable_const)]
 const LOCATION_PATTERN: once_cell::unsync::Lazy<Regex> = once_cell::unsync::Lazy::new(|| Regex::new(r"^(\d+):(\d+)$").unwrap());
 pub fn parse_location(s: &str) -> Option<Location> {
-    LOCATION_PATTERN.captures(s).map(|c| {
+    let lp = LOCATION_PATTERN;
+    lp.captures(s).map(|c| {
         Location {
             bar_no: c.get(1).unwrap().as_str().parse().unwrap(),
             offset: c.get(2).unwrap().as_str().parse().unwrap(),

@@ -53,9 +53,9 @@ impl VarIndex {
     }
 }
 
-impl Into<VarIndex> for u8 {
-    fn into(self) -> VarIndex {
-        VarIndex::from_value(self).unwrap()
+impl From<u8> for VarIndex {
+    fn from(value: u8) -> Self {
+        VarIndex::from_value(value).unwrap()
     }
 }
 
@@ -96,7 +96,7 @@ impl fmt::Display for Repeat {
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct RepeatSet {
     value: EnumSet<Repeat>,
 }
@@ -137,7 +137,7 @@ impl RepeatSet {
         Repeat::Start | Repeat::End | Repeat::Dc | Repeat::Ds | Repeat::Segno | Repeat::Var1 | Repeat::Var2 | Repeat::Var3
     );
 
-    pub const EMPTY: RepeatSet = Self { value: EnumSet::EMPTY };
+    pub const EMPTY: RepeatSet = Self { value: EnumSet::empty() };
 
     pub fn contains(self, r: Repeat) -> bool {
         self.value.contains(r)
@@ -172,7 +172,7 @@ impl RepeatSet {
     }
 
     pub fn remove(self, r: Repeat) -> Self {
-        let mut copy = self.clone();
+        let mut copy = self;
         copy.value.remove(r);
         copy
     }
@@ -186,7 +186,7 @@ impl RepeatSet {
     }
 
     pub fn remove_resions(self) -> Self {
-        let mut copy = self.clone();
+        let mut copy = self;
         copy.value.remove(Repeat::Var1);
         copy.value.remove(Repeat::Var2);
         copy.value.remove(Repeat::Var3);
@@ -197,11 +197,9 @@ impl RepeatSet {
     pub fn len(self) -> usize {
         self.value.len()
     }
-}
 
-impl Default for RepeatSet {
-    fn default() -> Self {
-        Self { value: Default::default() }
+    pub fn is_empty(self) -> bool {
+        self.value.is_empty()
     }
 }
 
@@ -305,7 +303,7 @@ mod tests {
     fn can_deserialize_dc_fine() {
         let repeats: RepeatSet = serde_json::from_str(r#"{ "value": 4 }"#).unwrap();
         assert_eq!(repeats.len(), 1);
-        assert_eq!(repeats.contains(Repeat::Dc), true);
+        assert!(repeats.contains(Repeat::Dc));
     }
 
     #[test]
@@ -370,7 +368,7 @@ mod tests {
     #[test]
     fn range_empty() {
         let store: Store<NanFreeF32, Bar, i32> = Store::new(false);
-        let (start, mut z) = store.range(NanFreeF32::from(0.0) .. NanFreeF32::from(100.0));
+        let (start, z) = store.range(NanFreeF32::from(0.0) .. NanFreeF32::from(100.0));
         assert_eq!(start, 0);
         assert_eq!(z.len(), 0);
     }
@@ -380,7 +378,7 @@ mod tests {
         let mut store: Store<NanFreeF32, Bar, i32> = Store::new(false);
         let bar0 = Bar::new(1, None, None, repeat_set!());
         store.add(NanFreeF32::from(1.0), bar0, 0);
-        let (start, mut z) = store.range(NanFreeF32::from(0.0) .. NanFreeF32::from(1.0));
+        let (start, z) = store.range(NanFreeF32::from(0.0) .. NanFreeF32::from(1.0));
         assert_eq!(start, 0);
         assert_eq!(z.len(), 0);
     }
@@ -390,12 +388,12 @@ mod tests {
         let mut store: Store<NanFreeF32, Bar, i32> = Store::new(false);
         let bar0 = Bar::new(1, None, None, repeat_set!());
         store.add(NanFreeF32::from(1.0), bar0, 0);
-        let (start, mut z) = store.range(NanFreeF32::from(0.0) .. NanFreeF32::from(1.1));
+        let (start, z) = store.range(NanFreeF32::from(0.0) .. NanFreeF32::from(1.1));
         assert_eq!(start, 0);
         assert_eq!(z.len(), 1);
         assert_eq!(z[0], (NanFreeF32::from(1.0), bar0));
 
-        let (start, mut z) = store.range(NanFreeF32::from(1.0) .. NanFreeF32::from(1.1));
+        let (start, z) = store.range(NanFreeF32::from(1.0) .. NanFreeF32::from(1.1));
         assert_eq!(start, 0);
         assert_eq!(z.len(), 1);
         assert_eq!(z[0], (NanFreeF32::from(1.0), bar0));
@@ -406,7 +404,7 @@ mod tests {
         let mut store: Store<NanFreeF32, Bar, i32> = Store::new(false);
         let bar0 = Bar::new(1, None, None, repeat_set!());
         store.add(NanFreeF32::from(1.0), bar0, 0);
-        let (start, mut z) = store.range(NanFreeF32::from(1.1) .. NanFreeF32::from(2.0));
+        let (start, z) = store.range(NanFreeF32::from(1.1) .. NanFreeF32::from(2.0));
         assert_eq!(start, 0);
         assert_eq!(z.len(), 0);
     }
@@ -416,7 +414,7 @@ mod tests {
         let mut store: Store<NanFreeF32, Bar, i32> = Store::new(false);
         let bar0 = Bar::new(1, None, None, repeat_set!());
         store.add(NanFreeF32::from(1.0), bar0, 0);
-        let (start, mut z) = store.range(NanFreeF32::from(0.1) ..= NanFreeF32::from(1.0));
+        let (start, z) = store.range(NanFreeF32::from(0.1) ..= NanFreeF32::from(1.0));
         assert_eq!(start, 0);
         assert_eq!(z.len(), 1);
         assert_eq!(z[0], (NanFreeF32::from(1.0), bar0));
@@ -432,7 +430,7 @@ mod tests {
         store.add(10.0.into(), bar1, 0);
         store.add(0.0.into(), bar2, 0);
 
-        let (start, mut z) = store.range(NanFreeF32::from(0.0) ..= NanFreeF32::from(10.0));
+        let (start, z) = store.range(NanFreeF32::from(0.0) ..= NanFreeF32::from(10.0));
         assert_eq!(start, 0);
         assert_eq!(z.len(), 3);
         assert_eq!(z[0], (NanFreeF32::from(0.0), bar2));
@@ -553,31 +551,31 @@ mod tests {
     #[test]
     fn empty_repeat_set() {
         let set = repeat_set!();
-        assert_eq!(set.contains(Repeat::Start), false);
-        assert_eq!(set.contains(Repeat::End), false);
-        assert_eq!(set.contains(Repeat::Dc), false);
-        assert_eq!(set.contains(Repeat::Fine), false);
-        assert_eq!(set.contains(Repeat::Ds), false);
-        assert_eq!(set.contains(Repeat::Segno), false);
-        assert_eq!(set.contains(Repeat::Var1), false);
-        assert_eq!(set.contains(Repeat::Var2), false);
-        assert_eq!(set.contains(Repeat::Var3), false);
-        assert_eq!(set.contains(Repeat::Var4), false);
+        assert!(!set.contains(Repeat::Start));
+        assert!(!set.contains(Repeat::End));
+        assert!(!set.contains(Repeat::Dc));
+        assert!(!set.contains(Repeat::Fine));
+        assert!(!set.contains(Repeat::Ds));
+        assert!(!set.contains(Repeat::Segno));
+        assert!(!set.contains(Repeat::Var1));
+        assert!(!set.contains(Repeat::Var2));
+        assert!(!set.contains(Repeat::Var3));
+        assert!(!set.contains(Repeat::Var4));
     }
 
     #[test]
     fn repeat_set_contains() {
         let set = repeat_set!(Repeat::Start, Repeat::End);
-        assert_eq!(set.contains(Repeat::Start), true);
-        assert_eq!(set.contains(Repeat::End), true);
-        assert_eq!(set.contains(Repeat::Dc), false);
-        assert_eq!(set.contains(Repeat::Fine), false);
-        assert_eq!(set.contains(Repeat::Ds), false);
-        assert_eq!(set.contains(Repeat::Segno), false);
-        assert_eq!(set.contains(Repeat::Var1), false);
-        assert_eq!(set.contains(Repeat::Var2), false);
-        assert_eq!(set.contains(Repeat::Var3), false);
-        assert_eq!(set.contains(Repeat::Var4), false);
+        assert!(set.contains(Repeat::Start));
+        assert!(set.contains(Repeat::End));
+        assert!(!set.contains(Repeat::Dc));
+        assert!(!set.contains(Repeat::Fine));
+        assert!(!set.contains(Repeat::Ds));
+        assert!(!set.contains(Repeat::Segno));
+        assert!(!set.contains(Repeat::Var1));
+        assert!(!set.contains(Repeat::Var2));
+        assert!(!set.contains(Repeat::Var3));
+        assert!(!set.contains(Repeat::Var4));
     }
 
     #[test]

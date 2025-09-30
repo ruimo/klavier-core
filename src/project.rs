@@ -1,4 +1,5 @@
 use std::rc::Rc;
+use std::slice;
 
 use klavier_helper::bag_store::{BagStore, BagStoreEvent};
 use klavier_helper::store::{Store, StoreEvent};
@@ -40,7 +41,7 @@ pub enum ChangeRepoType {
     AdHoc,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone, Copy, PartialEq, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Copy, PartialEq, Debug, Default)]
 pub struct ModelChangeMetadata {
     /// None: Do not care.
     /// Some(true): Need to select.
@@ -50,13 +51,6 @@ pub struct ModelChangeMetadata {
 }
 
 impl ModelChangeMetadata {
-    pub fn new() -> Self {
-        Self {
-            need_select: None,
-            dragged: false,
-        }
-    }
-
     pub fn with_need_select(self, need_select: bool) -> Self {
         Self {
             need_select: Some(need_select),
@@ -90,19 +84,19 @@ pub struct ExportedProject {
 impl From<ExportedProject> for ProjectImpl {
     fn from(exported: ExportedProject) -> Self {
         let mut note_repo: BagStore<u32, Rc<Note>, ModelChangeMetadata> = BagStore::new(true);
-        note_repo.bulk_add(exported.models.notes.into_iter().map(|n| (n.start_tick(), Rc::new(n))).collect(), ModelChangeMetadata::new());
+        note_repo.bulk_add(exported.models.notes.into_iter().map(|n| (n.start_tick(), Rc::new(n))).collect(), ModelChangeMetadata::default());
 
         let mut bar_repo: Store<u32, Bar, ModelChangeMetadata> = Store::new(true);
-        bar_repo.bulk_add(exported.models.bars.into_iter().map(|b| (b.start_tick, b)).collect(), ModelChangeMetadata::new());
+        bar_repo.bulk_add(exported.models.bars.into_iter().map(|b| (b.start_tick, b)).collect(), ModelChangeMetadata::default());
 
         let mut tempo_repo: Store<u32, Tempo, ModelChangeMetadata> = Store::new(true);
-        tempo_repo.bulk_add(exported.models.tempos.into_iter().map(|t| (t.start_tick, t)).collect(), ModelChangeMetadata::new());
+        tempo_repo.bulk_add(exported.models.tempos.into_iter().map(|t| (t.start_tick, t)).collect(), ModelChangeMetadata::default());
 
         let mut dumper_repo: Store<u32, CtrlChg, ModelChangeMetadata> = Store::new(true);
-        dumper_repo.bulk_add(exported.models.dumpers.into_iter().map(|d| (d.start_tick, d)).collect(), ModelChangeMetadata::new());
+        dumper_repo.bulk_add(exported.models.dumpers.into_iter().map(|d| (d.start_tick, d)).collect(), ModelChangeMetadata::default());
 
         let mut soft_repo: Store<u32, CtrlChg, ModelChangeMetadata> = Store::new(true);
-        soft_repo.bulk_add(exported.models.softs.into_iter().map(|s| (s.start_tick, s)).collect(), ModelChangeMetadata::new());
+        soft_repo.bulk_add(exported.models.softs.into_iter().map(|s| (s.start_tick, s)).collect(), ModelChangeMetadata::default());
 
         ProjectImpl {
             rhythm: exported.rhythm,
@@ -113,39 +107,40 @@ impl From<ExportedProject> for ProjectImpl {
     }
 }
 
-impl Into<ExportedProject> for ProjectImpl {
-    fn into(self) -> ExportedProject {
-        let mut notes: Vec<Note> = Vec::with_capacity(self.note_repo.len());
-        for (_, n) in self.note_repo.iter() {
+impl From<ProjectImpl> for ExportedProject {
+    fn from(value: ProjectImpl) -> Self {
+        let mut notes: Vec<Note> = Vec::with_capacity(value.note_repo.len());
+        for (_, n) in value.note_repo.iter() {
             notes.push((**n).clone());
         }
 
-        let mut bars: Vec<Bar> = Vec::with_capacity(self.bar_repo.len());
-        for (_, b) in self.bar_repo.iter() {
+        let mut bars: Vec<Bar> = Vec::with_capacity(value.bar_repo.len());
+        for (_, b) in value.bar_repo.iter() {
             bars.push(*b);
         }
 
-        let mut tempos: Vec<Tempo> = Vec::with_capacity(self.tempo_repo.len());
-        for (_, t) in self.tempo_repo.iter() {
+        let mut tempos: Vec<Tempo> = Vec::with_capacity(value.tempo_repo.len());
+        for (_, t) in value.tempo_repo.iter() {
             tempos.push(*t);
         }
 
-        let mut dumpers: Vec<CtrlChg> = Vec::with_capacity(self.dumper_repo.len());
-        for (_, d) in self.dumper_repo.iter() {
+        let mut dumpers: Vec<CtrlChg> = Vec::with_capacity(value.dumper_repo.len());
+        for (_, d) in value.dumper_repo.iter() {
             dumpers.push(*d);
         }
 
-        let mut softs: Vec<CtrlChg> = Vec::with_capacity(self.soft_repo.len());
-        for (_, s) in self.soft_repo.iter() {
+        let mut softs: Vec<CtrlChg> = Vec::with_capacity(value.soft_repo.len());
+        for (_, s) in value.soft_repo.iter() {
             softs.push(*s);
         }
 
         ExportedProject {
-            rhythm: self.rhythm,
-            key: self.key,
-            grid: self.grid,
+            rhythm: value.rhythm,
+            key: value.key,
+            grid: value.grid,
             models: Models { notes, bars, tempos, dumpers, softs }
         }
+
     }
 }
 
@@ -184,16 +179,13 @@ impl ProjectImpl {
 
     // Add bars without posting undo info.
     fn add_bar_internal(&mut self, bar: Bar, select: bool) -> Vec<Bar> {
-        let mut metadata = ModelChangeMetadata::new();
+        let mut metadata = ModelChangeMetadata::default();
         if select { metadata.need_select = Some(true); }
-        self.bar_repo.add(bar.start_tick, bar, metadata).map(|o| vec![o]).unwrap_or(vec![])
+        self.bar_repo.add(bar.start_tick, bar, metadata).map(|o| vec![o]).unwrap_or_default()
     }
 
     pub fn bar_no(&self, bar: &Bar) -> Option<usize> {
-        match self.bar_repo.index(bar.start_tick) {
-            Ok(i) => Some(i),
-            Err(_) => None,
-        }
+        self.bar_repo.index(bar.start_tick).ok()
     }
     
     pub fn tempo_at(&self, tick: u32) -> TempoValue {
@@ -217,38 +209,36 @@ impl ProjectImpl {
             }
         } else if (u32::MAX as usize) < loc.bar_no() {
             Err(LocationError::Overflow)
-        } else {
-            if loc.bar_no() <= self.bar_repo.len() {
-                let (tick, _) = self.bar_repo[loc.bar_no() - 1];
-                let sum = (tick as usize) + loc.offset();
-                if (u32::MAX as usize) < sum {
-                    Err(LocationError::Overflow)
-                } else {
-                    Ok(sum as u32)
-                }
+        } else if loc.bar_no() <= self.bar_repo.len() {
+            let (tick, _) = self.bar_repo[loc.bar_no() - 1];
+            let sum = (tick as usize) + loc.offset();
+            if (u32::MAX as usize) < sum {
+                Err(LocationError::Overflow)
             } else {
-                let tick = match self.last_bar() {
-                    None => {
-                        loc.bar_no() * (self.rhythm.tick_len() as usize) + loc.offset()
-                    },
-                    Some((last_bar_no, last_bar)) => {
-                        let last_tick = last_bar.start_tick;
-                        let tick_len = self.rhythm_at(last_tick).tick_len() as usize;
-                        (loc.bar_no() - last_bar_no - 1) * tick_len + loc.offset() + last_bar.start_tick as usize
-                    },
-                };
+                Ok(sum as u32)
+            }
+        } else {
+            let tick = match self.last_bar() {
+                None => {
+                    loc.bar_no() * (self.rhythm.tick_len() as usize) + loc.offset()
+                },
+                Some((last_bar_no, last_bar)) => {
+                    let last_tick = last_bar.start_tick;
+                    let tick_len = self.rhythm_at(last_tick).tick_len() as usize;
+                    (loc.bar_no() - last_bar_no - 1) * tick_len + loc.offset() + last_bar.start_tick as usize
+                },
+            };
 
-                if (u32::MAX as usize) < tick {
-                    Err(LocationError::Overflow)
-                } else {
-                    Ok(tick as u32)
-                }
+            if (u32::MAX as usize) < tick {
+                Err(LocationError::Overflow)
+            } else {
+                Ok(tick as u32)
             }
         }
     }
     
     pub fn tick_to_location(&self, tick: u32) -> Location {
-        if self.bar_repo.len() == 0 {
+        if self.bar_repo.is_empty() {
             Location::new(0, tick as usize)
         } else {
             match self.bar_repo.find(&tick) {
@@ -299,13 +289,14 @@ impl ProjectImpl {
     /// Returns bar no(0 offset) and bar.
     #[inline]
     fn last_bar(&self) -> Option<(usize, Bar)> {
-        self.bar_repo.peek_last().map(|(_, bar)| (self.bar_repo.len() - 1, bar.clone()))
+        self.bar_repo.peek_last().map(|(_, bar)| (self.bar_repo.len() - 1, *bar))
     }
     
+    #[allow(clippy::borrow_interior_mutable_const)]
     fn note_max_end_tick(&self) -> Option<u32> {
         if self.note_repo.is_empty() { return None; }
         let mut start_tick =
-        self.note_repo.peek_last().map(|t| { t.0.clone() }).unwrap_or(0) as i64 - *Note::LONGEST_TICK_LEN as i64;
+        self.note_repo.peek_last().map(|t| { *t.0 }).unwrap_or(0) as i64 - *Note::LONGEST_TICK_LEN as i64;
         if start_tick < 0 { start_tick = 0; }
         let mut max_tick_loc = 0;
         for (tick, note) in self.note_repo.range(start_tick as u32..) {
@@ -407,6 +398,7 @@ impl Default for ProjectImpl {
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum ProjectCmd {
     SetRhythm(Rhythm, Rhythm),
     SetKey(Key, Key),
@@ -442,7 +434,7 @@ impl Cmd for ProjectCmd {
                     proj.dumper_repo.remove(&d.start_tick);
                 }
                 for s in added.softs.iter() {
-                    proj.soft_repo.remove(&&s.start_tick);
+                    proj.soft_repo.remove(&s.start_tick);
                 }
                 
                 for n in removed.notes.iter() {
@@ -489,7 +481,7 @@ impl Cmd for ProjectCmd {
                     proj.dumper_repo.remove(&d.start_tick);
                 }
                 for s in removed.softs.iter() {
-                    proj.soft_repo.remove(&&s.start_tick);
+                    proj.soft_repo.remove(&s.start_tick);
                 }
                 
                 for n in added.notes.iter() {
@@ -594,7 +586,7 @@ impl Project for SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr> {
     
     fn add_note(&mut self, note: Note, select: bool) {
         let note = Rc::new(note);
-        let mut metadata = ModelChangeMetadata::new();
+        let mut metadata = ModelChangeMetadata::default();
         if select { metadata.need_select = Some(true); }
 
         let _ = self.mutate(Box::new(move |proj| {
@@ -602,7 +594,7 @@ impl Project for SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr> {
             let replenishid_bars = proj.replenish_bars();
             Ok(
                 ProjectCmd::ModelChanged {
-                    added: Models::empty().with_notes(&[note.clone()]).with_bars(replenishid_bars),
+                    added: Models::empty().with_notes(slice::from_ref(&note)).with_bars(replenishid_bars),
                     removed: Models::empty(),
                     metadata,
                 }
@@ -611,7 +603,7 @@ impl Project for SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr> {
     }
     
     fn add_bar(&mut self, bar: Bar, select: bool) {
-        let mut metadata = ModelChangeMetadata::new();
+        let mut metadata = ModelChangeMetadata::default();
         if select { metadata.need_select = Some(true); }
         let _ = self.mutate(Box::new(move |proj| {
             let origin = proj.bar_repo.add(bar.start_tick, bar, metadata).map(|o| vec![o]).unwrap_or(vec![]);
@@ -627,7 +619,7 @@ impl Project for SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr> {
     }
     
     fn add_tempo(&mut self, tempo: Tempo, select: bool) {
-        let mut metadata = ModelChangeMetadata::new();
+        let mut metadata = ModelChangeMetadata::default();
         if select { metadata.need_select = Some(true); }
         let _ = self.mutate(Box::new(move |proj| {
             let origin = proj.tempo_repo.add(tempo.start_tick, tempo, metadata).map(|o| vec![o]).unwrap_or(vec![]);
@@ -644,7 +636,7 @@ impl Project for SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr> {
     }
     
     fn add_dumper(&mut self, dumper: CtrlChg, select: bool) {
-        let mut metadata = ModelChangeMetadata::new();
+        let mut metadata = ModelChangeMetadata::default();
         if select { metadata.need_select = Some(true); }
         let _ = self.mutate(Box::new(move |proj| {
             let origin = proj.dumper_repo.add(dumper.start_tick, dumper, metadata).map(|o| vec![o]).unwrap_or(vec![]);
@@ -660,7 +652,7 @@ impl Project for SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr> {
     }
     
     fn add_soft(&mut self, soft: CtrlChg, select: bool) {
-        let mut metadata = ModelChangeMetadata::new();
+        let mut metadata = ModelChangeMetadata::default();
         if select { metadata.need_select = Some(true); }
         let _ = self.mutate(Box::new(move |proj| {
             let origin = proj.soft_repo.add(soft.start_tick, soft, metadata).map(|o| vec![o]).unwrap_or(vec![]);
@@ -676,7 +668,7 @@ impl Project for SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr> {
     }
     
     fn tuplize(&mut self, notes: Vec<Rc<Note>>) {
-        let metadata = ModelChangeMetadata::new().with_need_select(true);
+        let metadata = ModelChangeMetadata::default().with_need_select(true);
         let _ = self.mutate(Box::new(move |proj| {
             if 1 < notes.len() {
                 let mut to_remove = Vec::with_capacity(notes.len());
@@ -684,7 +676,7 @@ impl Project for SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr> {
                     to_remove.push((n.start_tick(), n.clone()));
                 }
                 let tupled = tuple::tuplize(notes.clone());
-                proj.note_repo.bulk_remove(&to_remove, ModelChangeMetadata::new());
+                proj.note_repo.bulk_remove(&to_remove, ModelChangeMetadata::default());
                 proj.note_repo.bulk_add(
                     tupled.iter().map(|n| (n.start_tick(), n.clone())).collect(),
                     metadata
@@ -768,8 +760,9 @@ impl Project for SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr> {
                 from_to.dumpers.len(),
                 from_to.softs.len(),
             );
-
-            let mut note_change: Vec<((u32, Rc<Note>), (u32, Rc<Note>))> = Vec::with_capacity(from_to.notes.len());
+            
+            type NoteChange = ((u32, Rc<Note>), (u32, Rc<Note>));
+            let mut note_change: Vec<NoteChange> = Vec::with_capacity(from_to.notes.len());
             for (from, to) in from_to.notes.iter() {
                 note_change.push((
                     (from.start_tick(), Rc::new(from.clone())), (to.start_tick(), Rc::new(to.clone()))
@@ -847,7 +840,7 @@ impl Project for SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr> {
     }
 
     fn clear_model_events(&mut self) {
-        let _ = self.irreversible_mutate(Box::new(|proj| {
+        self.irreversible_mutate(Box::new(|proj| {
             proj.note_repo.clear_events();
             proj.bar_repo.clear_events();
             proj.tempo_repo.clear_events();
@@ -904,7 +897,7 @@ impl Project for SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr> {
 
     #[inline]
     fn note_repo(&self) -> &BagStore<u32, Rc<Note>, ModelChangeMetadata> {
-        &self.model().note_repo()
+        self.model().note_repo()
     }
 
     #[inline]
@@ -935,14 +928,14 @@ mod tests {
     use std::rc::Rc;
     use klavier_helper::store::Store;
     use serdo::undo_store::{SqliteUndoStore, UndoStore, self};
-    use crate::{tempo::{Tempo, TempoValue}, project::{tempo_at, ProjectCmd, ProjectCmdErr, ModelChangeMetadata, ProjectStore, LocationError}, note::Note, solfa::Solfa, octave::Octave, sharp_flat::SharpFlat, pitch::Pitch, duration::{Duration, Numerator, Denominator, Dots}, velocity::Velocity, trimmer::{Trimmer, RateTrimmer}, bar::{Bar, RepeatSet}, location::Location, rhythm::Rhythm, ctrl_chg::CtrlChg, key::Key, grid::Grid, models::{Models, ModelChanges}, channel::Channel};
+    use crate::{tempo::{Tempo, TempoValue}, project::{tempo_at, ProjectCmd, ProjectCmdErr, ModelChangeMetadata, ProjectStore, LocationError}, note::Note, solfa::Solfa, octave::Octave, sharp_flat::SharpFlat, pitch::Pitch, duration::{Duration, Numerator, Denominator, Dots}, velocity::Velocity, trimmer::RateTrimmer, bar::{Bar, RepeatSet}, location::Location, rhythm::Rhythm, ctrl_chg::CtrlChg, key::Key, grid::Grid, models::{Models, ModelChanges}, channel::Channel};
     use super::{DEFAULT_TEMPO, ProjectImpl};
 
     #[test]
     fn tempo() {
         let mut store: Store<u32, Tempo, ModelChangeMetadata> = Store::new(false);
         assert_eq!(tempo_at(0, &store), DEFAULT_TEMPO);
-        let metadata = ModelChangeMetadata::new();
+        let metadata = ModelChangeMetadata::default();
 
         store.add(10, Tempo { start_tick: 10, value: TempoValue::new(100) }, metadata);
         assert_eq!(tempo_at(0, &store), DEFAULT_TEMPO);
@@ -964,18 +957,12 @@ mod tests {
         dir.push("project");
         let mut store: ProjectStore = ProjectStore::open(dir.clone(), undo_store::Options::new()).unwrap();
 
-        let note = Note::new(
-            100,
-            Pitch::new(Solfa::C, Octave::Oct4, SharpFlat::Null),
-            Duration::new(Numerator::Quarter, Denominator::from_value(2).unwrap(), Dots::ZERO),
-            false,
-            false,
-            Velocity::new(64),
-            Trimmer::ZERO,
-            RateTrimmer::ONE,
-            Trimmer::ZERO,
-            Channel::default(),
-        );
+        let note = Note {
+            base_start_tick: 100,
+            pitch: Pitch::new(Solfa::C, Octave::Oct4, SharpFlat::Null),
+            duration: Duration::new(Numerator::Quarter, Denominator::from_value(2).unwrap(), Dots::ZERO),
+            ..Default::default()
+        };
         
         store.add_note(note, false);
         assert_eq!(store.model().note_repo().len(), 1);
@@ -1152,40 +1139,35 @@ mod tests {
         let pitch = Pitch::new(Solfa::C, Octave::Oct0, SharpFlat::Null);
         assert_eq!(store.model().note_max_end_tick(), None);
         
-        let note0 = Note::new( // end tick: 100 + 240 * 1.5 = 460
-            100, pitch,
-            Duration::new(Numerator::Quarter, Denominator::from_value(2).unwrap(), Dots::ONE),
-            false, false, Velocity::new(10), Trimmer::ZERO,
-            RateTrimmer::new(1.0, 1.0, 1.0, 1.0),
-            Trimmer::ZERO,
-            Channel::default(),
-        );
+        let note0 = Note { // end tick: 100 + 240 * 1.5 = 460
+            base_start_tick: 100, pitch,
+            duration: Duration::new(Numerator::Quarter, Denominator::from_value(2).unwrap(), Dots::ONE),
+            base_velocity: Velocity::new(10),
+            ..Default::default()
+        };
         
         let end_tick0 = note0.base_start_tick + note0.tick_len();
         store.add_note(note0, false);
         assert_eq!(store.model().note_max_end_tick(), Some(end_tick0));
         
-        let note1 = Note::new( // end tick: 100 + 960 * 1.5 = 1540
-            100, pitch,
-            Duration::new(Numerator::Whole, Denominator::from_value(2).unwrap(), Dots::ONE),
-            false, false, Velocity::new(10), Trimmer::ZERO,
-            RateTrimmer::new(1.0, 1.0, 1.0, 1.0),
-            Trimmer::ZERO,
-            Channel::default(),
-        );
+        let note1 = Note { // end tick: 100 + 960 * 1.5 = 1540
+            base_start_tick: 100, pitch,
+            duration: Duration::new(Numerator::Whole, Denominator::from_value(2).unwrap(), Dots::ONE),
+            base_velocity: Velocity::new(10),
+            ..Default::default()
+        };
         
         store.add_note(note1.clone(), false);
         assert_eq!(store.model().note_max_end_tick(), Some(note1.base_start_tick + note1.tick_len()));
         
-        let _ = store.add_note(
-            Note::new( // end tick: 200 + 120 * 2.5 = 440
-                200, pitch,
-                Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
-                false, false, Velocity::new(10), Trimmer::ZERO,
-                RateTrimmer::new(1.0, 1.0, 1.0, 2.0),
-                Trimmer::ZERO,
-                Channel::default(),
-            ), false
+        store.add_note(
+            Note { // end tick: 200 + 120 * 2.5 = 440
+                base_start_tick: 200, pitch,
+                duration: Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
+                base_velocity: Velocity::new(10),
+                duration_trimmer: RateTrimmer::new(1.0, 1.0, 1.0, 2.0),
+                ..Default::default()
+            }, false
         );
         
         assert_eq!(store.model().note_max_end_tick(), Some(note1.base_start_tick + note1.tick_len()));
@@ -1200,41 +1182,35 @@ mod tests {
         let pitch = Pitch::new(Solfa::C, Octave::Oct0, SharpFlat::Null);
         assert_eq!(store.model().bar_repo().len(), 0);
         store.add_note(
-            Note::new( // end tick: 100 + 240 * 1.5 = 460
-                100, pitch,
-                Duration::new(Numerator::Quarter, Denominator::from_value(2).unwrap(), Dots::ONE),
-                false, false, Velocity::new(10), Trimmer::ZERO,
-                RateTrimmer::new(1.0, 1.0, 1.0, 1.0),
-                Trimmer::ZERO,
-                Channel::default(),
-            ), false
+            Note { // end tick: 100 + 240 * 1.5 = 460
+                base_start_tick: 100, pitch,
+                duration: Duration::new(Numerator::Quarter, Denominator::from_value(2).unwrap(), Dots::ONE),
+                base_velocity: Velocity::new(10),
+                ..Default::default()
+            }, false
         );
         assert_eq!(store.model().bar_repo().len(), 1);
         assert_eq!(store.model().bar_repo().peek_last().unwrap().0, 960);
         
         store.add_note(
-            Note::new(
-                0, pitch,
-                Duration::new(Numerator::Whole, Denominator::from_value(2).unwrap(), Dots::ZERO),
-                false, false, Velocity::new(10), Trimmer::ZERO,
-                RateTrimmer::new(1.0, 1.0, 1.0, 1.0),
-                Trimmer::ZERO,
-                Channel::default(),
-            ), false
+            Note {
+                pitch,
+                duration: Duration::new(Numerator::Whole, Denominator::from_value(2).unwrap(), Dots::ZERO),
+                base_velocity: Velocity::new(10),
+                ..Default::default()
+            }, false
         );
 
         assert_eq!(store.model().bar_repo().len(), 1);
         assert_eq!(store.model().bar_repo().peek_last().unwrap().0, 960);
         
         store.add_note(
-            Note::new(
-                960, pitch,
-                Duration::new(Numerator::Whole, Denominator::from_value(2).unwrap(), Dots::ONE),
-                false, false, Velocity::new(10), Trimmer::ZERO,
-                RateTrimmer::new(1.0, 1.0, 1.0, 1.0),
-                Trimmer::ZERO,
-                Channel::default(),
-            ), false
+            Note {
+                base_start_tick: 960, pitch,
+                duration: Duration::new(Numerator::Whole, Denominator::from_value(2).unwrap(), Dots::ONE),
+                base_velocity: Velocity::new(10),
+                ..Default::default()
+            }, false
         );
 
         assert_eq!(store.model().bar_repo().len(), 3);
@@ -1277,37 +1253,28 @@ mod tests {
         dir.push("project");
         let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), undo_store::Options::new()).unwrap();
 
-        let note0 = Note::new(
-            100,
-            Pitch::new(Solfa::C, Octave::Oct4, SharpFlat::Null),
-            Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
-            false, false,
-            Velocity::new(64),
-            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO,
-            Channel::default(),
-        );
+        let note0 = Note {
+            base_start_tick: 100,
+            pitch: Pitch::new(Solfa::C, Octave::Oct4, SharpFlat::Null),
+            duration: Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
+            ..Default::default()
+        };
         store.add_note(note0.clone(), false);
         
-        let note1 = Note::new(
-            120,
-            Pitch::new(Solfa::C, Octave::Oct4, SharpFlat::Null),
-            Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
-            false, false,
-            Velocity::new(64),
-            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO,
-            Channel::default(),
-        );
+        let note1 = Note {
+            base_start_tick: 120,
+            pitch: Pitch::new(Solfa::C, Octave::Oct4, SharpFlat::Null),
+            duration: Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
+            ..Default::default()
+        };
         store.add_note(note1.clone(), false);
         
-        let note2 = Note::new(
-            150,
-            Pitch::new(Solfa::C, Octave::Oct4, SharpFlat::Null),
-            Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
-            false, false,
-            Velocity::new(64),
-            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO,
-            Channel::default(),
-        );
+        let note2 = Note {
+            base_start_tick: 150,
+            pitch: Pitch::new(Solfa::C, Octave::Oct4, SharpFlat::Null),
+            duration: Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
+            ..Default::default()
+        };
         store.add_note(note2.clone(), false);
         assert_eq!(store.model().note_repo().len(), 3);
         
@@ -1346,20 +1313,19 @@ mod tests {
     
     #[test]
     fn can_serialize_project() {
-        let mut proj = ProjectImpl::default();
-        proj.key = Key::FLAT_2;
+        let mut proj = ProjectImpl {
+          key: Key::FLAT_2,
+          ..Default::default()
+        };
         proj.rhythm = Rhythm::new(3, 4);
         
-        let note0 = Rc::new(Note::new(
-            100,
-            Pitch::new(Solfa::C, Octave::Oct4, SharpFlat::Null),
-            Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
-            false, false,
-            Velocity::new(64),
-            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO,
-            Channel::default(),
-        ));
-        proj.note_repo.add(note0.start_tick(), note0.clone(), ModelChangeMetadata::new());
+        let note0 = Rc::new(Note {
+            base_start_tick: 100,
+            pitch: Pitch::new(Solfa::C, Octave::Oct4, SharpFlat::Null),
+            duration: Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
+            ..Default::default()
+       });
+        proj.note_repo.add(note0.start_tick(), note0.clone(), ModelChangeMetadata::default());
 
         let ser = bincode::serialize(&proj).unwrap();
         
@@ -1447,15 +1413,12 @@ mod tests {
         dir.push("project");
         let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), undo_store::Options::new()).unwrap();
         
-        let note0 = Note::new(
-            100,
-            Pitch::new(Solfa::C, Octave::Oct4, SharpFlat::Null),
-            Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
-            false, false,
-            Velocity::new(64),
-            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO,
-            Channel::default(),
-        );
+        let note0 = Note {
+            base_start_tick: 100,
+            pitch: Pitch::new(Solfa::C, Octave::Oct4, SharpFlat::Null),
+            duration: Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
+            ..Default::default()
+        };
         
         store.add_note(note0.clone(), false);
         store.wait_until_saved();
@@ -1572,15 +1535,12 @@ mod tests {
         assert_eq!(store.model().soft_repo.len(), 0);
         assert_eq!(store.model().bar_repo.len(), 0);
         
-        let note0 = Note::new(
-            100,
-            Pitch::new(Solfa::C, Octave::Oct4, SharpFlat::Null),
-            Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
-            false, false,
-            Velocity::new(64),
-            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO,
-            Channel::default(),
-        );
+        let note0 = Note {
+            base_start_tick: 100,
+            pitch: Pitch::new(Solfa::C, Octave::Oct4, SharpFlat::Null),
+            duration: Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
+            ..Default::default()
+        };
         store.add_note(note0.clone(), false);
         
         // Tuplize one note do nothing.
@@ -1594,25 +1554,19 @@ mod tests {
         assert_eq!(store.model().note_repo.len(), 0);
         assert_eq!(store.model().bar_repo.len(), 0);
         
-        let note1 = Note::new(
-            110,
-            Pitch::new(Solfa::D, Octave::Oct4, SharpFlat::Null),
-            Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
-            false, false,
-            Velocity::new(64),
-            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO,
-            Channel::default(),
-        );
+        let note1 = Note {
+            base_start_tick: 110,
+            pitch: Pitch::new(Solfa::D, Octave::Oct4, SharpFlat::Null),
+            duration: Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
+            ..Default::default()
+        };
         
-        let note2 = Note::new(
-            120,
-            Pitch::new(Solfa::E, Octave::Oct4, SharpFlat::Null),
-            Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
-            false, false,
-            Velocity::new(64),
-            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO,
-            Channel::default(),
-        );
+        let note2 = Note {
+            base_start_tick: 120,
+            pitch: Pitch::new(Solfa::E, Octave::Oct4, SharpFlat::Null),
+            duration: Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
+            ..Default::default()
+        };
         store.add_note(note0.clone(), false);
         store.add_note(note1.clone(), false);
         store.add_note(note2.clone(), false);
@@ -1646,22 +1600,19 @@ mod tests {
         dir.push("project");
         let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), undo_store::Options::new()).unwrap();
         
-        let note0 = Note::new(
-            100,
-            Pitch::new(Solfa::C, Octave::Oct4, SharpFlat::Null),
-            Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
-            false, false,
-            Velocity::new(64),
-            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO,
-            Channel::default(),
-        );
+        let note0 = Note {
+            base_start_tick: 100,
+            pitch: Pitch::new(Solfa::C, Octave::Oct4, SharpFlat::Null),
+            duration: Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
+            ..Default::default()
+        };
         let tempo0 = Tempo::new(200, 200);
         store.bulk_add(
             Models {
                 notes: vec![note0.clone()],
                 bars: vec![], tempos: vec![tempo0], dumpers: vec![], softs: vec![]
             },
-            ModelChangeMetadata::new()
+            ModelChangeMetadata::default()
         );
         store.wait_until_saved();
         assert_eq!(store.model().note_repo().len(), 1);
@@ -1673,7 +1624,7 @@ mod tests {
                 notes: vec![note0.clone()],
                 bars: vec![], tempos: vec![tempo0], dumpers: vec![], softs: vec![]
             },
-            ModelChangeMetadata::new()
+            ModelChangeMetadata::default()
         );
         store.wait_until_saved();
 
@@ -1694,15 +1645,12 @@ mod tests {
         dir.push("project");
         let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), undo_store::Options::new()).unwrap();
         
-        let note0 = Note::new(
-            100,
-            Pitch::new(Solfa::C, Octave::Oct4, SharpFlat::Null),
-            Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
-            false, false,
-            Velocity::new(64),
-            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO,
-            Channel::default(),
-        );
+        let note0 = Note {
+            base_start_tick: 100,
+            pitch: Pitch::new(Solfa::C, Octave::Oct4, SharpFlat::Null),
+            duration: Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
+            ..Default::default()
+        };
 
         let tempo0 = Tempo::new(200, 200);
         store.bulk_add(
@@ -1710,7 +1658,7 @@ mod tests {
                 notes: vec![note0.clone()],
                 bars: vec![], tempos: vec![tempo0], dumpers: vec![], softs: vec![]
             },
-            ModelChangeMetadata::new()
+            ModelChangeMetadata::default()
         );
         store.wait_until_saved();
 
@@ -1731,31 +1679,25 @@ mod tests {
         dir.push("project");
         let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), undo_store::Options::new()).unwrap();
         
-        let note00 = Note::new(
-            100,
-            Pitch::new(Solfa::C, Octave::Oct4, SharpFlat::Null),
-            Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
-            false, false,
-            Velocity::new(64),
-            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO,
-            Channel::default(),
-        );
-        let note01 = Note::new(
-            101,
-            Pitch::new(Solfa::C, Octave::Oct3, SharpFlat::Null),
-            Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
-            false, false,
-            Velocity::new(64),
-            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO,
-            Channel::default(),
-        );
+        let note00 = Note {
+            base_start_tick: 100,
+            pitch: Pitch::new(Solfa::C, Octave::Oct4, SharpFlat::Null),
+            duration: Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
+            ..Default::default()
+        };
+        let note01 = Note {
+            base_start_tick: 101,
+            pitch: Pitch::new(Solfa::C, Octave::Oct3, SharpFlat::Null),
+            duration: Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
+            ..Default::default()
+        };
         let tempo0 = Tempo::new(200, 200);
         store.bulk_add(
             Models {
                 notes: vec![note00.clone(), note01.clone()],
                 bars: vec![], tempos: vec![tempo0], dumpers: vec![], softs: vec![]
             },
-            ModelChangeMetadata::new()
+            ModelChangeMetadata::default()
         );
         store.wait_until_saved();
 
@@ -1769,7 +1711,7 @@ mod tests {
             notes: vec![(note00.clone(), note10.clone()), (note01.clone(), note11.clone())],
             bars: vec![], tempos: vec![], dumpers: vec![], softs: vec![]
         };
-        store.change(change, ModelChangeMetadata::new());
+        store.change(change, ModelChangeMetadata::default());
         store.wait_until_saved();
 
         assert_eq!(store.model().note_repo().len(), 2);
@@ -1799,24 +1741,18 @@ mod tests {
         dir.push("project");
         let mut store = SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr>::open(dir.clone(), undo_store::Options::new().with_undo_limit(10)).unwrap();
         
-        let note00 = Note::new(
-            100,
-            Pitch::new(Solfa::C, Octave::Oct4, SharpFlat::Null),
-            Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
-            false, false,
-            Velocity::new(64),
-            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO,
-            Channel::default(),
-        );
-        let note01 = Note::new(
-            101,
-            Pitch::new(Solfa::C, Octave::Oct3, SharpFlat::Null),
-            Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
-            false, false,
-            Velocity::new(64),
-            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO,
-            Channel::default(),
-        );
+        let note00 = Note {
+            base_start_tick: 100,
+            pitch: Pitch::new(Solfa::C, Octave::Oct4, SharpFlat::Null),
+            duration: Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
+            ..Default::default()
+        };
+        let note01 = Note {
+            base_start_tick: 101,
+            pitch: Pitch::new(Solfa::C, Octave::Oct3, SharpFlat::Null),
+            duration: Duration::new(Numerator::N8th, Denominator::from_value(2).unwrap(), Dots::ZERO),
+            ..Default::default()
+        };
         store.add_note(note00, false);
         store.add_note(note01, false);
 

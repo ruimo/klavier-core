@@ -1,3 +1,5 @@
+use std::fmt;
+
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GridError {
@@ -52,9 +54,9 @@ impl Default for Grid {
     }
 }
 
-impl ToString for Grid {
-    fn to_string(&self) -> String {
-        self.value.to_string()
+impl fmt::Display for Grid {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.value)
     }
 }
 

@@ -81,8 +81,9 @@ impl Pitch {
     }
 
     pub fn apply_key(self, key: Key) -> Result<Self, PitchError> {
+        let solfas = Key::SOLFAS;
         if self.sharp_flat == SharpFlat::Null {
-            match Key::SOLFAS.get(&key) {
+            match solfas.get(&key) {
                 Some(solfas) =>
                     if solfas.contains(&self.solfa) {
                         let sharp_flat = if key.is_flat() { SharpFlat::Flat } else { SharpFlat::Sharp };
@@ -111,9 +112,9 @@ impl Pitch {
             let so = (solfa.score_offset() + 7 * octave.offset()) as i8;
             Ok(
                 Self {
-                    solfa: solfa,
-                    octave: octave,
-                    sharp_flat: sharp_flat,
+                    solfa,
+                    octave,
+                    sharp_flat,
                     value: v as u8,
                     score_offset: so
                 }
@@ -148,22 +149,14 @@ impl Pitch {
     }
 
     pub fn from_score_offset(score_offset: i32) -> Self {
-        let score_offset = 
-            if score_offset < MIN_SCORE_OFFSET {
-                MIN_SCORE_OFFSET
-            } else if MAX_SCORE_OFFSET < score_offset {
-                MAX_SCORE_OFFSET
-            } else {
-                score_offset
-            };
-
+        let score_offset = score_offset.clamp(MIN_SCORE_OFFSET, MAX_SCORE_OFFSET);
         let (solfa, octave) = Self::score_offset_to_solfa_octave(score_offset);
         Self::value_of(solfa, octave, SharpFlat::Null).unwrap()
     }
 
     pub fn with_score_offset_delta(self, score_offset_delta: i32) -> Result<Self, PitchError> {
         let score_offset = self.score_offset as i32 + score_offset_delta;
-        if score_offset < MIN_SCORE_OFFSET || MAX_SCORE_OFFSET < score_offset {
+        if !(MIN_SCORE_OFFSET..=MAX_SCORE_OFFSET).contains(&score_offset) {
             return Err(PitchError::InvalidScoreOffset(score_offset));
         }
 
@@ -174,8 +167,8 @@ impl Pitch {
     pub fn score_offset_to_solfa_octave(score_offset: i32) -> (Solfa, Octave) {
         let octave_offset = score_offset / 7;
         let solfa_offset = score_offset - (octave_offset * 7);
-        let solfa = Solfa::from_score_offset(solfa_offset as i32);
-        let octave = Octave::from_score_offset(octave_offset as i32).unwrap();
+        let solfa = Solfa::from_score_offset(solfa_offset);
+        let octave = Octave::from_score_offset(octave_offset).unwrap();
         (solfa, octave)
     }
 

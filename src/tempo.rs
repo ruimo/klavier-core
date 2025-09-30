@@ -74,19 +74,10 @@ impl TempoValue {
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct Tempo {
     pub start_tick: u32,
     pub value: TempoValue,
-}
-
-impl Default for Tempo {
-    fn default() -> Self {
-        Self {
-            start_tick: 0,
-            value: Default::default()
-        }
-    }
 }
 
 impl Tempo {
@@ -101,7 +92,6 @@ impl Tempo {
         Self {
              start_tick: (self.start_tick as i64 + tick_delta as i64) as u32,
              value: TempoValue::safe_new((self.value.as_u16() as i32 + tempo_delta) as u16),
-             ..*self
         }
     }
 

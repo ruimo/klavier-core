@@ -10,7 +10,7 @@ pub enum SharpFlat {
 }
 
 impl SharpFlat {
-    pub const fn offset(self: Self) -> i32 {
+    pub const fn offset(self) -> i32 {
         match self {
             Self::Sharp => 1,
             Self::DoubleSharp => 2,

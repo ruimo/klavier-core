@@ -29,7 +29,7 @@ impl SubAssign<i32> for Solfa {
 impl Solfa {
     pub const ALL: &'static [Solfa] = &[Self::C, Self::D, Self::E, Self::F, Self::G, Self::A, Self::B];
 
-    pub const fn score_offset(self: Self) -> i32 {
+    pub const fn score_offset(self) -> i32 {
         match self {
             Self::C => 0,
             Self::D => 1,
@@ -41,7 +41,7 @@ impl Solfa {
         }
     }
 
-    pub const fn pitch_offset(self: Self) -> i32 {
+    pub const fn pitch_offset(self) -> i32 {
         match self {
             Self::C => 0,
             Self::D => 2,

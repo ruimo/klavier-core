@@ -17,7 +17,7 @@ impl ExportedProject {
     pub fn from_clipboard_text(json: String) -> Result<Self, FromClipboardTextErr> {
         let mut stream = serde_json::Deserializer::from_str(&json).into_iter::<Value>();
         match stream.next() {
-            None => return Err(FromClipboardTextErr::EmptyString),
+            None => Err(FromClipboardTextErr::EmptyString),
             Some(Ok(ver)) =>
                 if let Value::Number(ver_no) = ver {
                     if let Some(v) = ver_no.as_u64() {

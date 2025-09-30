@@ -137,7 +137,7 @@ impl GlobalRepeatBuilder {
         Ok(self)
       }
       Some(Coda::Two { from_tick, to_tick }) =>
-        return Err(report!(RenderRegionError::MoreThanTwoCodas { tick: [from_tick, to_tick, tick] }))
+        Err(report!(RenderRegionError::MoreThanTwoCodas { tick: [from_tick, to_tick, tick] }))
     }
   }
 
@@ -213,7 +213,7 @@ impl GlobalRepeatBuilder {
     let mut warnings = self.warnings;
 
     match self.ds_dc {
-      None => return Ok((None, warnings)),
+      None => Ok((None, warnings)),
       Some(ds_dc) => {
         match ds_dc {
           DsDc::Dc { tick, len } => {
@@ -223,9 +223,7 @@ impl GlobalRepeatBuilder {
                 segno_tick
               } else {
                 let rhythm_tick_len = self.top_rhythm.tick_len();
-                if len + first_bar_len == rhythm_tick_len {
-                  0
-                } else if len == rhythm_tick_len && first_bar_len == rhythm_tick_len {
+                if len + first_bar_len == rhythm_tick_len || len == rhythm_tick_len && first_bar_len == rhythm_tick_len{
                   0
                 } else {
                   first_bar_len

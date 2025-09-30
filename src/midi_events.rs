@@ -31,12 +31,12 @@ impl MidiSrc {
                 velocity,
             } => {
                 buf.push(0b10010000 | channel.as_u8());
-                buf.push(pitch.value() as u8);
+                buf.push(pitch.value());
                 buf.push(velocity.as_u8());
             }
             MidiSrc::NoteOff { channel, pitch } => {
                 buf.push(0b10010000 | channel.as_u8());
-                buf.push(pitch.value() as u8);
+                buf.push(pitch.value());
                 buf.push(0);
             }
             MidiSrc::CtrlChg {
@@ -177,7 +177,7 @@ impl MidiEvents {
 
         for (tick, tempo) in self.tempo_table.iter() {
             let c = Self::accum_tick_to_cycle(&mut cycles_by_tick, *tick, sampling_rate, ticks_per_quarter);
-            table_for_tracking.add(c, (*tick, tempo.clone()), ());
+            table_for_tracking.add(c, (*tick, *tempo), ());
         }
 
         PlayData {
@@ -319,7 +319,7 @@ pub fn create_midi_events(
 ) -> Result<(MidiEvents, Vec<RenderRegionWarning>), Report<RenderRegionError>> {
     let key_table = create_key_table(top_key, bar_repo);
     let mut key_finder = key_table.finder();
-    let notes_by_base_start_tick = notes_by_base_start_tick(&note_repo);
+    let notes_by_base_start_tick = notes_by_base_start_tick(note_repo);
 
     let (region, warnings) = render_region(top_rhythm, bar_repo.iter().map(|(_, bar)| bar))?;
     let imaginary_top_bar = vec![(
@@ -340,7 +340,7 @@ pub fn create_midi_events(
         );
 
         let (_size, bars) = bar_repo.range(chunk.start_tick()..=chunk.end_tick());
-        let top_bars: &Vec<(u32, Bar)> = match bars.get(0) {
+        let top_bars: &Vec<(u32, Bar)> = match bars.first() {
             Some((_idx, top_bar)) => {
                 if top_bar.start_tick != 0 {
                     &imaginary_top_bar
@@ -458,7 +458,7 @@ mod tests {
         note_repo.add(
             note0.start_tick(),
             note0.clone(),
-            ModelChangeMetadata::new(),
+            ModelChangeMetadata::default(),
         );
 
         let note1 = Rc::new(Note {
@@ -469,7 +469,7 @@ mod tests {
         note_repo.add(
             note1.start_tick(),
             note1.clone(),
-            ModelChangeMetadata::new(),
+            ModelChangeMetadata::default(),
         );
 
         let note2 = Rc::new(Note {
@@ -481,7 +481,7 @@ mod tests {
         note_repo.add(
             note2.start_tick(),
             note2.clone(),
-            ModelChangeMetadata::new(),
+            ModelChangeMetadata::default(),
         );
 
         let (events, _warnings) = create_midi_events(
@@ -562,7 +562,7 @@ mod tests {
         note_repo.add(
             note0.start_tick(),
             note0.clone(),
-            ModelChangeMetadata::new(),
+            ModelChangeMetadata::default(),
         );
 
         let note1 = Rc::new(Note {
@@ -573,7 +573,7 @@ mod tests {
         note_repo.add(
             note1.start_tick(),
             note1.clone(),
-            ModelChangeMetadata::new(),
+            ModelChangeMetadata::default(),
         );
 
         let (events, _warnings) = create_midi_events(
@@ -678,7 +678,7 @@ mod tests {
         note_repo.add(
             note0.start_tick(),
             note0.clone(),
-            ModelChangeMetadata::new(),
+            ModelChangeMetadata::default(),
         );
 
         let note1 = Rc::new(Note {
@@ -689,7 +689,7 @@ mod tests {
         note_repo.add(
             note1.start_tick(),
             note1.clone(),
-            ModelChangeMetadata::new(),
+            ModelChangeMetadata::default(),
         );
 
         let note2 = Rc::new(Note {
@@ -701,14 +701,14 @@ mod tests {
         note_repo.add(
             note2.start_tick(),
             note2.clone(),
-            ModelChangeMetadata::new(),
+            ModelChangeMetadata::default(),
         );
 
         let mut bar_repo: Store<u32, Bar, ModelChangeMetadata> = Store::new(false);
         bar_repo.add(
             300,
             Bar::new(300, None, Some(Key::FLAT_1), repeat_set!()),
-            ModelChangeMetadata::new(),
+            ModelChangeMetadata::default(),
         );
 
         let (events, _warnings) = create_midi_events(
@@ -789,7 +789,7 @@ mod tests {
         note_repo.add(
             note0.start_tick(),
             note0.clone(),
-            ModelChangeMetadata::new(),
+            ModelChangeMetadata::default(),
         );
 
         let note1 = Rc::new(Note {
@@ -801,7 +801,7 @@ mod tests {
         note_repo.add(
             note1.start_tick(),
             note1.clone(),
-            ModelChangeMetadata::new(),
+            ModelChangeMetadata::default(),
         );
 
         let note2 = Rc::new(Note {
@@ -813,14 +813,14 @@ mod tests {
         note_repo.add(
             note2.start_tick(),
             note2.clone(),
-            ModelChangeMetadata::new(),
+            ModelChangeMetadata::default(),
         );
 
         let mut bar_repo: Store<u32, Bar, ModelChangeMetadata> = Store::new(false);
         bar_repo.add(
             200,
             Bar::new(200, None, Some(Key::FLAT_1), repeat_set!(Repeat::End)),
-            ModelChangeMetadata::new(),
+            ModelChangeMetadata::default(),
         );
 
         let (events, _warnings) = create_midi_events(
@@ -922,43 +922,43 @@ mod tests {
             base_start_tick: 0, pitch: Pitch::new(Solfa::F, Octave::Oct4, SharpFlat::Null), ..Default::default()
         });
         note_repo.add(
-            note0.start_tick(), note0.clone(), ModelChangeMetadata::new(),
+            note0.start_tick(), note0.clone(), ModelChangeMetadata::default(),
         );
 
         let note1 = Rc::new(Note {
             base_start_tick: 240, pitch: Pitch::new(Solfa::F, Octave::Oct4, SharpFlat::Null), ..Default::default()
         });
         note_repo.add(
-            note1.start_tick(), note1.clone(), ModelChangeMetadata::new(),
+            note1.start_tick(), note1.clone(), ModelChangeMetadata::default(),
         );
 
         let note2 = Rc::new(Note {
             base_start_tick: 480, pitch: Pitch::new(Solfa::F, Octave::Oct4, SharpFlat::Null), ..Default::default()
         });
         note_repo.add(
-            note2.start_tick(), note2.clone(), ModelChangeMetadata::new(),
+            note2.start_tick(), note2.clone(), ModelChangeMetadata::default(),
         );
 
         let note3 = Rc::new(Note {
             base_start_tick: 720, pitch: Pitch::new(Solfa::F, Octave::Oct4, SharpFlat::Null), ..Default::default()
         });
         note_repo.add(
-            note3.start_tick(), note3.clone(), ModelChangeMetadata::new(),
+            note3.start_tick(), note3.clone(), ModelChangeMetadata::default(),
         );
 
-        tempo_repo.add(400, Tempo::new(400, 30), ModelChangeMetadata::new());
-        tempo_repo.add(560, Tempo::new(560, 120), ModelChangeMetadata::new());
+        tempo_repo.add(400, Tempo::new(400, 30), ModelChangeMetadata::default());
+        tempo_repo.add(560, Tempo::new(560, 120), ModelChangeMetadata::default());
 
         bar_repo.add(
             480,
             Bar::new(480, None, None, repeat_set!(Repeat::End)),
-            ModelChangeMetadata::new(),
+            ModelChangeMetadata::default(),
         );
 
         bar_repo.add(
             960,
             Bar::new(960, None, None, repeat_set!()),
-            ModelChangeMetadata::new(),
+            ModelChangeMetadata::default(),
         );
 
         let (events, _warnings) = create_midi_events(
@@ -983,7 +983,7 @@ mod tests {
         // tick: 1200, cycle = 176000 + (240-80)*48000*60/120/240 = 192000
         // tick: 1440, cycle = 192000 + 240*48000*60/120/240 = 216000
 
-        let cycle = 0 * 48000 * 60 / 120 / 240;
+        let cycle = 0; // * 48000 * 60 / 120 / 240;
         assert_eq!(
             midi_data[0],
             (
@@ -1091,7 +1091,7 @@ mod tests {
         note_repo.add(
             note0.start_tick(),
             note0.clone(),
-            ModelChangeMetadata::new(),
+            ModelChangeMetadata::default(),
         );
 
         let note1 = Rc::new(Note {
@@ -1102,7 +1102,7 @@ mod tests {
         note_repo.add(
             note1.start_tick(),
             note1.clone(),
-            ModelChangeMetadata::new(),
+            ModelChangeMetadata::default(),
         );
 
         let note2 = Rc::new(Note {
@@ -1113,7 +1113,7 @@ mod tests {
         note_repo.add(
             note2.start_tick(),
             note2.clone(),
-            ModelChangeMetadata::new(),
+            ModelChangeMetadata::default(),
         );
 
         let mut bar_repo: Store<u32, Bar, ModelChangeMetadata> = Store::new(false);
@@ -1125,16 +1125,16 @@ mod tests {
                 Some(Key::FLAT_1),
                 repeat_set!(Repeat::End, Repeat::Fine),
             ),
-            ModelChangeMetadata::new(),
+            ModelChangeMetadata::default(),
         );
         bar_repo.add(
             960,
             Bar::new(960, None, None, repeat_set!(Repeat::Dc)),
-            ModelChangeMetadata::new(),
+            ModelChangeMetadata::default(),
         );
 
         let mut tempo_repo = Store::new(false);
-        tempo_repo.add(200, Tempo::new(200, 300), ModelChangeMetadata::new());
+        tempo_repo.add(200, Tempo::new(200, 300), ModelChangeMetadata::default());
 
         //      0    100  200  300 340 400   480 500  600      740   840 960
         //      V    V    V    V   V   V     :|  V    V        V     V   |D.C.
@@ -1440,7 +1440,7 @@ mod tests {
         note_repo.add(
             note0.start_tick(),
             note0.clone(),
-            ModelChangeMetadata::new(),
+            ModelChangeMetadata::default(),
         );
         let note1 = Rc::new(Note {
             base_start_tick: 500,
@@ -1450,19 +1450,19 @@ mod tests {
         note_repo.add(
             note1.start_tick(),
             note1.clone(),
-            ModelChangeMetadata::new(),
+            ModelChangeMetadata::default(),
         );
 
         let mut bar_repo: Store<u32, Bar, ModelChangeMetadata> = Store::new(false);
         bar_repo.add(
             480,
             Bar::new(480, None, None, repeat_set!(Repeat::Segno)),
-            ModelChangeMetadata::new(),
+            ModelChangeMetadata::default(),
         );
         bar_repo.add(
             960,
             Bar::new(960, None, None, repeat_set!(Repeat::Ds)),
-            ModelChangeMetadata::new(),
+            ModelChangeMetadata::default(),
         );
 
         let tempo_repo = Store::new(false);
@@ -1605,7 +1605,7 @@ mod tests {
         note_repo.add(
             note0.start_tick(),
             note0.clone(),
-            ModelChangeMetadata::new(),
+            ModelChangeMetadata::default(),
         );
         let note1 = Rc::new(Note {
             base_start_tick: 500,
@@ -1615,19 +1615,19 @@ mod tests {
         note_repo.add(
             note1.start_tick(),
             note1.clone(),
-            ModelChangeMetadata::new(),
+            ModelChangeMetadata::default(),
         );
 
         let mut bar_repo: Store<u32, Bar, ModelChangeMetadata> = Store::new(false);
         bar_repo.add(
             480,
             Bar::new(480, None, None, repeat_set!(Repeat::Segno)),
-            ModelChangeMetadata::new(),
+            ModelChangeMetadata::default(),
         );
         bar_repo.add(
             960,
             Bar::new(960, None, None, repeat_set!(Repeat::Ds)),
-            ModelChangeMetadata::new(),
+            ModelChangeMetadata::default(),
         );
 
         let tempo_repo = Store::new(false);
@@ -1709,19 +1709,19 @@ mod tests {
         note_repo.add(
             note0.start_tick(),
             note0.clone(),
-            ModelChangeMetadata::new(),
+            ModelChangeMetadata::default(),
         );
 
         let mut bar_repo: Store<u32, Bar, ModelChangeMetadata> = Store::new(false);
         bar_repo.add(
             240,
             Bar::new(240, None, Some(Key::NONE), repeat_set!()),
-            ModelChangeMetadata::new(),
+            ModelChangeMetadata::default(),
         );
         bar_repo.add(
             480,
             Bar::new(480, None, None, repeat_set!()),
-            ModelChangeMetadata::new(),
+            ModelChangeMetadata::default(),
         );
 
         let (events, _warnings) = create_midi_events(

@@ -17,7 +17,7 @@ pub const fn for_f32(min: f32, max: f32) -> Clipper<f32> {
 }
 
 impl <T: PartialOrd + Copy> Clipper<T> {
-    pub fn clip(self: &Self, value: T) -> T {
+    pub fn clip(&self, value: T) -> T {
         if value < self.min {
             self.min
         } else if self.max < value {

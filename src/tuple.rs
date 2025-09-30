@@ -24,7 +24,7 @@ pub fn tuplize(notes: Vec<Rc<Note>>) -> Vec<Rc<Note>> {
                 TupleElem::Some { start_tick: _, notes, min_duration: _ } => {
                     for n in notes.iter() {
                         let mut note = (**n).clone();
-                        note.base_start_tick = (start_tick + (total_tick * u / total_unit)) as u32;
+                        note.base_start_tick = start_tick + (total_tick * u / total_unit);
                         note.duration = n.duration.with_denominator(denominator);
                         u += numerator_unit(note.duration);
                         ret.push(Rc::new(note));
@@ -146,19 +146,19 @@ fn numerator_unit(dur: Duration) -> u32 {
 
 #[inline]
 fn gcd_units(units: HashSet<u32>) -> Option<u32> {
-    units.iter().map(|p| *p).reduce(|u0, u1| u0.gcd(u1))
+    units.iter().copied().reduce(|u0, u1| u0.gcd(u1))
 }
 
 fn sort_by_start_tick(notes: &mut [Rc<Note>]) -> (Option<u32>, Vec<TupleElem>) {
     if notes.is_empty() { return (None, vec![]) }
 
-    notes.sort_by(|note0, note1| note0.base_start_tick().cmp(&note1.base_start_tick()));
+    notes.sort_by_key(|note0| note0.base_start_tick());
     let mut ret: Vec<TupleElem> = vec![];
     let mut cur = TupleElem::None;
     let mut numerator_units = HashSet::new();
 
     for note in notes.iter() {
-        numerator_units.insert(numerator_unit(note.duration) as u32);
+        numerator_units.insert(numerator_unit(note.duration));
         match cur.add(note.clone()) {
             SingleOrDouble::Single(e) => {
                 cur = e;
@@ -177,7 +177,7 @@ fn sort_by_start_tick(notes: &mut [Rc<Note>]) -> (Option<u32>, Vec<TupleElem>) {
     )
 }
 
-fn total_tick_unit(elements: &Vec<TupleElem>) -> (u32, u32) {
+fn total_tick_unit(elements: &[TupleElem]) -> (u32, u32) {
     let mut tick = 0;
     let mut unit: u32 = 0;
 
@@ -192,37 +192,29 @@ fn total_tick_unit(elements: &Vec<TupleElem>) -> (u32, u32) {
 #[cfg(test)]
 mod tests {
     use std::rc::Rc;
-    use crate::{note::Note, pitch::Pitch, solfa::Solfa, octave::Octave, sharp_flat::SharpFlat, duration::{Duration, Numerator, Denominator, Dots}, trimmer::{Trimmer, RateTrimmer}, velocity::Velocity, channel::Channel};
+    use crate::{note::Note, pitch::Pitch, solfa::Solfa, octave::Octave, sharp_flat::SharpFlat, duration::{Duration, Numerator, Denominator, Dots}};
     use super::{numerator_unit, tuplize};
 
     #[test]
     fn sort_by_start_tick() {
-        let note0 = Rc::new(Note::new(
-            0,
-            Pitch::new(Solfa::A, Octave::Oct3, SharpFlat::Null),
-            Duration::new(Numerator::Quarter, Denominator::from_value(2).unwrap(), Dots::ZERO),
-            false, false, Velocity::new(64),
-            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO,
-            Channel::default(),
-        ));
+        let note0 = Rc::new(Note {
+            pitch: Pitch::new(Solfa::A, Octave::Oct3, SharpFlat::Null),
+            duration: Duration::new(Numerator::Quarter, Denominator::from_value(2).unwrap(), Dots::ZERO),
+            ..Default::default()
+        });
 
-        let note1 = Rc::new(Note::new(
-            0,
-            Pitch::new(Solfa::A, Octave::Oct3, SharpFlat::Null),
-            Duration::new(Numerator::Half, Denominator::from_value(2).unwrap(), Dots::ZERO),
-            false, false, Velocity::new(64),
-            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO,
-            Channel::default(),
-        ));
+        let note1 = Rc::new(Note {
+            pitch: Pitch::new(Solfa::A, Octave::Oct3, SharpFlat::Null),
+            duration: Duration::new(Numerator::Half, Denominator::from_value(2).unwrap(), Dots::ZERO),
+            ..Default::default()
+        });
 
-        let note2 = Rc::new(Note::new(
-            100,
-            Pitch::new(Solfa::A, Octave::Oct3, SharpFlat::Null),
-            Duration::new(Numerator::Quarter, Denominator::from_value(2).unwrap(), Dots::ZERO),
-            false, false, Velocity::new(64),
-            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO,
-            Channel::default(),
-        ));
+        let note2 = Rc::new(Note {
+            base_start_tick: 100,
+            pitch: Pitch::new(Solfa::A, Octave::Oct3, SharpFlat::Null),
+            duration: Duration::new(Numerator::Quarter, Denominator::from_value(2).unwrap(), Dots::ZERO),
+            ..Default::default()
+        });
 
         let mut notes: [Rc<Note>; 3] = [note2.clone(), note1.clone(), note0.clone()];
         let (min_unit, sorted) = super::sort_by_start_tick(&mut notes);
@@ -267,12 +259,10 @@ mod tests {
     }
 
     fn note(tick: u32, pitch: Pitch, duration: Duration) -> Rc<Note> {
-        Rc::new(Note::new(
-            tick, pitch, duration,
-            false, false, Velocity::new(64),
-            Trimmer::ZERO, RateTrimmer::ONE, Trimmer::ZERO,
-            Channel::default(),
-        ))
+        Rc::new(Note {
+            base_start_tick: tick, pitch, duration,
+            ..Default::default()
+        })
     }
 
     #[test]

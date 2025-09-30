@@ -70,6 +70,10 @@ impl UndoStore {
     pub fn len(&self) -> usize {
         self.store.len()
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.store.is_empty()
+    }
     
     pub fn can_undo(&self) -> bool {
         self.index < self.store.len()
@@ -89,64 +93,48 @@ impl UndoStore {
 mod tests {
     use std::{rc::Rc};
 
-    use crate::{models::Models, note::Note, pitch::Pitch, solfa::Solfa, octave::Octave, sharp_flat::SharpFlat, duration::{Duration, Numerator, Denominator, Dots}, velocity::Velocity, trimmer::{Trimmer, RateTrimmer}, bar::{Bar, RepeatSet, Repeat}, undo::{UndoStore, Undo}, project::ModelChangeMetadata, channel::Channel};
+    use crate::{models::Models, note::Note, pitch::Pitch, solfa::Solfa, octave::Octave, sharp_flat::SharpFlat, duration::{Duration, Numerator, Denominator, Dots}, velocity::Velocity, trimmer::RateTrimmer, bar::{Bar, RepeatSet, Repeat}, undo::{UndoStore, Undo}, project::ModelChangeMetadata};
     
     fn test_models() -> [Models; 5] {
         let note0 = Rc::new(
-            Note::new(
-                123, // base_start_tick
-                Pitch::new(Solfa::C, Octave::Oct1, SharpFlat::Null),
-                Duration::new(Numerator::Half, Denominator::from_value(2).unwrap(), Dots::ZERO),
-                false, // tie
-                false, // tied
-                Velocity::new(10), // base_velocity
-                Trimmer::ZERO, // start_tick_trimmer
-                RateTrimmer::new(1.0, 0.5, 2.0, 1.5), // duration_trimmer
-                Trimmer::ZERO, // velocity_trimmer
-                Channel::default(),
-            )
+            Note {
+                base_start_tick: 123,
+                pitch: Pitch::new(Solfa::C, Octave::Oct1, SharpFlat::Null),
+                duration: Duration::new(Numerator::Half, Denominator::from_value(2).unwrap(), Dots::ZERO),
+                base_velocity: Velocity::new(10),
+                duration_trimmer: RateTrimmer::new(1.0, 0.5, 2.0, 1.5),
+                ..Default::default()
+            }
         );
         let note1 = Rc::new(
-            Note::new(
-                123, // base_start_tick
-                Pitch::new(Solfa::D, Octave::Oct1, SharpFlat::Null),
-                Duration::new(Numerator::Half, Denominator::from_value(2).unwrap(), Dots::ZERO),
-                false, // tie
-                false, // tied
-                Velocity::new(10), // base_velocity
-                Trimmer::ZERO, // start_tick_trimmer
-                RateTrimmer::new(1.0, 0.5, 2.0, 1.5), // duration_trimmer
-                Trimmer::ZERO, // velocity_trimmer
-                Channel::default(),
-            )
+            Note {
+                base_start_tick: 123,
+                pitch: Pitch::new(Solfa::D, Octave::Oct1, SharpFlat::Null),
+                duration: Duration::new(Numerator::Half, Denominator::from_value(2).unwrap(), Dots::ZERO),
+                base_velocity: Velocity::new(10),
+                duration_trimmer: RateTrimmer::new(1.0, 0.5, 2.0, 1.5),
+                ..Default::default()
+            }
         );
         let note2 = Rc::new(
-            Note::new(
-                234, // base_start_tick
-                Pitch::new(Solfa::E, Octave::Oct1, SharpFlat::Null),
-                Duration::new(Numerator::Half, Denominator::from_value(2).unwrap(), Dots::ZERO),
-                false, // tie
-                false, // tied
-                Velocity::new(10), // base_velocity
-                Trimmer::ZERO, // start_tick_trimmer
-                RateTrimmer::new(1.0, 0.5, 2.0, 1.5), // duration_trimmer
-                Trimmer::ZERO, // velocity_trimmer
-                Channel::default(),
-            )
+            Note {
+                base_start_tick: 234,
+                pitch: Pitch::new(Solfa::E, Octave::Oct1, SharpFlat::Null),
+                duration: Duration::new(Numerator::Half, Denominator::from_value(2).unwrap(), Dots::ZERO),
+                base_velocity: Velocity::new(10),
+                duration_trimmer: RateTrimmer::new(1.0, 0.5, 2.0, 1.5),
+                ..Default::default()
+            }
         );
         let note3 = Rc::new(
-            Note::new(
-                345, // base_start_tick
-                Pitch::new(Solfa::F, Octave::Oct1, SharpFlat::Null),
-                Duration::new(Numerator::Half, Denominator::from_value(2).unwrap(), Dots::ZERO),
-                false, // tie
-                false, // tied
-                Velocity::new(10), // base_velocity
-                Trimmer::ZERO, // start_tick_trimmer
-                RateTrimmer::new(1.0, 0.5, 2.0, 1.5), // duration_trimmer
-                Trimmer::ZERO, // velocity_trimmer
-                Channel::default(),
-            )
+            Note {
+                base_start_tick: 345,
+                pitch: Pitch::new(Solfa::F, Octave::Oct1, SharpFlat::Null),
+                duration: Duration::new(Numerator::Half, Denominator::from_value(2).unwrap(), Dots::ZERO),
+                base_velocity: Velocity::new(10),
+                duration_trimmer: RateTrimmer::new(1.0, 0.5, 2.0, 1.5),
+                ..Default::default()
+            }
         );
 
         let bar0 = Bar::new(123, None, None, RepeatSet::EMPTY);
@@ -188,7 +176,7 @@ mod tests {
         let models = test_models();
         assert!(! store.can_undo());
         assert_eq!(store.undo(), None);
-        let metadata = ModelChangeMetadata::new();
+        let metadata = ModelChangeMetadata::default();
         store.add(Undo::Changed { added: models[0].clone(), removed: Models::empty(), metadata });
         assert_eq!(store.len(), 1);
         let mut z = store.iter();
@@ -236,7 +224,7 @@ mod tests {
     fn can_undo() {
         let mut store = UndoStore::new(3);
         let models = test_models();
-        let metadata = ModelChangeMetadata::new();
+        let metadata = ModelChangeMetadata::default();
         assert!(! store.can_undo());
         store.add(Undo::Changed { added: models[0].clone(), removed: Models::empty(), metadata });
         store.add(Undo::Changed { added: models[1].clone(), removed: Models::empty(), metadata });

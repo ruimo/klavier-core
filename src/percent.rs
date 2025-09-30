@@ -1,3 +1,5 @@
+use std::fmt;
+
 use crate::can_apply::CanApply;
 
 // 0.0% - 200.0%
@@ -40,9 +42,9 @@ impl CanApply<u32> for PercentU16 {
     }
 }
 
-impl ToString for PercentU16 {
-    fn to_string(&self) -> String {
-        self.to_f32().to_string()
+impl fmt::Display for PercentU16 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_f32())
     }
 }
 

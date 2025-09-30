@@ -28,6 +28,7 @@ impl Expr {
     map.insert("vt3", note.velocity_trimmer.value(3) as f64); // velocity trimmer 3
     map.insert("vt", note.velocity_trimmer.sum() as f64); // sum of velocity trimmers
     
+    #[allow(unexpected_cfgs)]
     let val: f64 = eval_compiled_ref!(&self.compiled, &self.slab, &mut map);
 
     Ok(val != 0.)
@@ -50,21 +51,21 @@ mod tests {
         .base_velocity(Velocity::new(64))
         .velocity_trimmer(Trimmer::new(20, 0, 0, 0))
         .build().unwrap();
-    assert_eq!(expr0.evaluate_note(&note0).unwrap(), false);
-    assert_eq!(expr1.evaluate_note(&note0).unwrap(), false);
-    assert_eq!(expr2.evaluate_note(&note0).unwrap(), true);
-    assert_eq!(expr3.evaluate_note(&note0).unwrap(), false);
-    assert_eq!(expr4.evaluate_note(&note0).unwrap(), true);
+    assert!(!expr0.evaluate_note(&note0).unwrap());
+    assert!(!expr1.evaluate_note(&note0).unwrap());
+    assert!(expr2.evaluate_note(&note0).unwrap());
+    assert!(!expr3.evaluate_note(&note0).unwrap());
+    assert!(expr4.evaluate_note(&note0).unwrap());
 
     let note1: Note = NoteBuilder::default()
         .base_velocity(Velocity::new(63))
         .velocity_trimmer(Trimmer::new(10, 10, 0, 0))
         .build().unwrap();
-    assert_eq!(expr0.evaluate_note(&note1).unwrap(), true);
-    assert_eq!(expr1.evaluate_note(&note1).unwrap(), true);
-    assert_eq!(expr2.evaluate_note(&note1).unwrap(), true);
-    assert_eq!(expr3.evaluate_note(&note1).unwrap(), false);
-    assert_eq!(expr4.evaluate_note(&note1).unwrap(), true);
+    assert!(expr0.evaluate_note(&note1).unwrap());
+    assert!(expr1.evaluate_note(&note1).unwrap());
+    assert!(expr2.evaluate_note(&note1).unwrap());
+    assert!(!expr3.evaluate_note(&note1).unwrap());
+    assert!(expr4.evaluate_note(&note1).unwrap());
 
     assert_eq!(Expr::new("foo <= 20").unwrap().evaluate_note(&note1), Err(fasteval::Error::Undefined("foo".to_owned())));
   }

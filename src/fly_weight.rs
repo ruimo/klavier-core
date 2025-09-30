@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::hash::Hash;
 
+#[derive(Default)]
 pub struct FlyWeight<'a, T> {
     pool: HashMap<&'a T, &'a T>,
 }
@@ -14,7 +15,7 @@ impl<'a, T> FlyWeight<'a, T>
         }
     }
 
-    pub fn intern(self: &mut Self, instance: &'a T) -> &'a T {
+    pub fn intern(&mut self, instance: &'a T) -> &'a T {
         self.pool.entry(instance).or_insert(instance)
     }
 }
@@ -31,7 +32,7 @@ mod tests {
     impl Data {
         fn new(value: i32) -> Data {
             Data {
-                value: value
+                value
             }
         }
     }

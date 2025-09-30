@@ -58,12 +58,16 @@ impl Chunk {
     self.end_tick - self.start_tick()
   }
 
+  pub fn is_empty(self) -> bool {
+    self.start_tick == self.end_tick
+  }
+
   pub fn by_accum_tick(chunks: &[Chunk]) -> Store<AccumTick, Chunk, ()> {
     let mut offset: u32 = 0;
     let mut buf: Store<AccumTick, Chunk, ()> = Store::new(false);
 
     for c in chunks {
-        buf.add(offset, c.clone(), ());
+        buf.add(offset, *c, ());
         if c.end_tick() != u32::MAX {
             offset += c.len();
         }
@@ -91,31 +95,13 @@ trait SimpleRegion: Region {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-struct NullRegion;
-
-impl Region for NullRegion {
-  fn to_chunks(&self) -> Vec<Chunk> {
-    vec![]
-  }
-}
-
-impl SimpleRegion for NullRegion {
-  fn render_chunks(&self, _phase: &RenderPhase) -> Vec<Chunk> {
-    vec![]
-  }
-  
-  fn to_iter1_chunks(&self, _: &GlobalRepeat) -> Vec<Chunk> {
-    vec![]
-  }
-}
-
-#[derive(Debug, PartialEq, Eq)]
 pub struct SequenceRegion {
   tick_range: Range<u32>,
 }
 
 impl SequenceRegion {
   #[inline]
+  #[allow(dead_code)]
   fn tick_len(&self) -> u32 {
     self.tick_range.len() as u32
   }
@@ -199,10 +185,10 @@ impl SimpleRegion for RepeatRegion {
     }
 
     match phase {
-        RenderPhase::NonDcDs => full(&self),
+        RenderPhase::NonDcDs => full(self),
         RenderPhase::DcDsIter0 { dc_ds_tick } => {
           if self.region.end_tick() <= *dc_ds_tick {
-            full(&self)
+            full(self)
           } else if self.region.end_tick() < *dc_ds_tick && *dc_ds_tick < self.region.end_tick() {
             // This condition should not occur.
             panic!("Logic error.");
@@ -271,7 +257,7 @@ impl SimpleRegion for VariationRegion {
     }
 
     match phase {
-        RenderPhase::NonDcDs => full(&self),
+        RenderPhase::NonDcDs => full(self),
         RenderPhase::DcDsIter0 { dc_ds_tick } => {
           if *dc_ds_tick <= self.common.start_tick() {
             vec![]
@@ -279,7 +265,7 @@ impl SimpleRegion for VariationRegion {
             // This condition should not occur.
             panic!("Logic error");
           } else {
-            full(&self)
+            full(self)
           }
         },
         RenderPhase::DcDsIter1 { global_repeat } => {
@@ -376,9 +362,11 @@ impl Display for RenderRegionError {
     }
 }
 
+type RenderRegionResult = Result<(Box<dyn Region>, Vec<RenderRegionWarning>), Report<RenderRegionError>>;
+
 pub fn render_region<'a>(
   tune_rhythm: Rhythm, bars: impl Iterator<Item = &'a Bar>
-) -> Result<(Box<dyn Region>, Vec<RenderRegionWarning>), Report<RenderRegionError>> {
+) -> RenderRegionResult {
   fn create_variation(start_tick: u32, region_start_ticks: Vec<u32>, end_tick: u32) -> Box<dyn SimpleRegion> {
     let mut variations: Vec<SequenceRegion> = vec![];
     let mut iter = region_start_ticks.iter();
@@ -401,11 +389,9 @@ pub fn render_region<'a>(
   let mut global_repeat: GlobalRepeatBuilder = GlobalRepeatBuilder::new(tune_rhythm);
 
   for bar in bars {
-    global_repeat = global_repeat.on_bar(&bar)?;
-    if is_auftakt.is_none() {
-      if bar.base_start_tick() != 0 {
-        is_auftakt = Some(bar.base_start_tick() < tune_rhythm.tick_len())
-      }
+    global_repeat = global_repeat.on_bar(bar)?;
+    if is_auftakt.is_none() && bar.base_start_tick() != 0 {
+      is_auftakt = Some(bar.base_start_tick() < tune_rhythm.tick_len());
     }
 
     state = match &state {
@@ -530,7 +516,7 @@ use crate::{bar::{Bar, Repeat}, play_iter::PlayIter, play_start_tick::{PlayStart
   #[test]
   fn empty() {
     let bars: Vec<Bar> = vec![];
-    let (region, warnings) = render_region(Rhythm::new(4, 4), bars.iter()).unwrap();
+    let (region, _warnings) = render_region(Rhythm::new(4, 4), bars.iter()).unwrap();
     let chunks = region.to_chunks();
     assert_eq!(chunks.len(), 1);
     assert_eq!(chunks[0], Chunk::new(0, u32::MAX));
@@ -546,8 +532,8 @@ use crate::{bar::{Bar, Repeat}, play_iter::PlayIter, play_start_tick::{PlayStart
   #[test]
   fn single_bar() {
     let bar = Bar::new(100, None, None, crate::repeat_set!());
-    let bars = vec![bar];
-    let (region, warnings) = render_region(Rhythm::new(4, 4), bars.iter()).unwrap();
+    let bars = [bar];
+    let (region, _warnings) = render_region(Rhythm::new(4, 4), bars.iter()).unwrap();
     let chunks = region.to_chunks();
     assert_eq!(chunks.len(), 1);
     assert_eq!(chunks[0], Chunk::new(0, u32::MAX));
@@ -565,10 +551,10 @@ use crate::{bar::{Bar, Repeat}, play_iter::PlayIter, play_start_tick::{PlayStart
   //   A  |  A  |  B
   #[test]
   fn default_start_repeat() {
-    let bars = vec![
+    let bars = [
       Bar::new(100, None, None, repeat_set!(Repeat::End))
     ];
-    let (region, warnings) = render_region(Rhythm::new(4, 4), bars.iter()).unwrap();
+    let (region, _warnings) = render_region(Rhythm::new(4, 4), bars.iter()).unwrap();
     let chunks = region.to_chunks();
     assert_eq!(chunks.len(), 3);
     assert_eq!(chunks[0], Chunk::new(0, 100));
@@ -596,7 +582,7 @@ use crate::{bar::{Bar, Repeat}, play_iter::PlayIter, play_start_tick::{PlayStart
   // Repeat end at 200 is invalid.
   #[test]
   fn invalid_repeat_end() {
-    let bars = vec![
+    let bars = [
       Bar::new(100, None, None, repeat_set!(Repeat::End)),
       Bar::new(200, None, None, repeat_set!(Repeat::End)),
     ];
@@ -613,12 +599,12 @@ use crate::{bar::{Bar, Repeat}, play_iter::PlayIter, play_start_tick::{PlayStart
   //   A  |  B  |  B  |  C
   #[test]
   fn single_repeat() {
-    let bars = vec![
+    let bars = [
       Bar::new(100, None, None, repeat_set!(Repeat::Start)),
       Bar::new(200, None, None, repeat_set!(Repeat::End)),
     ];
 
-    let (region, warnings) = render_region(Rhythm::new(4, 4), bars.iter()).unwrap();
+    let (region, _warnings) = render_region(Rhythm::new(4, 4), bars.iter()).unwrap();
     let chunks = region.to_chunks();
     assert_eq!(chunks.len(), 4);
     assert_eq!(chunks[0], Chunk::new(0, 100));
@@ -652,12 +638,12 @@ use crate::{bar::{Bar, Repeat}, play_iter::PlayIter, play_start_tick::{PlayStart
   //   A  |     B     |     B     |  C
   #[test]
   fn single_repeat2() {
-    let bars = vec![
+    let bars = [
       Bar::new(50, None, None, repeat_set!(Repeat::Start)),
       Bar::new(200, None, None, repeat_set!(Repeat::End)),
     ];
 
-    let (region, warnings) = render_region(Rhythm::new(4, 4), bars.iter()).unwrap();
+    let (region, _warnings) = render_region(Rhythm::new(4, 4), bars.iter()).unwrap();
     let chunks = region.to_chunks();
     assert_eq!(chunks.len(), 4);
     assert_eq!(chunks[0], Chunk::new(0, 50));
@@ -686,13 +672,13 @@ use crate::{bar::{Bar, Repeat}, play_iter::PlayIter, play_start_tick::{PlayStart
   //   A   |     B   |   A    |   C  |  D
   #[test]
   fn simple_variation() {
-    let bars = vec![
+    let bars = [
       Bar::new(50, None, None, repeat_set!(Repeat::Var1)),
       Bar::new(100, None, None, repeat_set!(Repeat::Var2)),
       Bar::new(150, None, None, repeat_set!()),
     ];
 
-    let (region, warnings) = render_region(Rhythm::new(4, 4), bars.iter()).unwrap();
+    let (region, _warnings) = render_region(Rhythm::new(4, 4), bars.iter()).unwrap();
     let chunks = region.to_chunks();
     assert_eq!(chunks.len(), 5);
     assert_eq!(chunks[0], Chunk::new(0, 50));
@@ -722,7 +708,7 @@ use crate::{bar::{Bar, Repeat}, play_iter::PlayIter, play_start_tick::{PlayStart
   //   A   |     B   |      C   |   A  |    D   |   E   |   F
   #[test]
   fn simple_variation2() {
-    let bars = vec![
+    let bars = [
       Bar::new(100, None, None, repeat_set!(Repeat::Var1)),
       Bar::new(200, None, None, repeat_set!(Repeat::Var1)),
       Bar::new(350, None, None, repeat_set!(Repeat::Var2)),
@@ -730,7 +716,7 @@ use crate::{bar::{Bar, Repeat}, play_iter::PlayIter, play_start_tick::{PlayStart
       Bar::new(650, None, None, repeat_set!()),
     ];
 
-    let (region, warnings) = render_region(Rhythm::new(4, 4), bars.iter()).unwrap();
+    let (region, _warnings) = render_region(Rhythm::new(4, 4), bars.iter()).unwrap();
     let chunks = region.to_chunks();
     assert_eq!(chunks.len(), 5);
     assert_eq!(chunks[0], Chunk::new(0, 100));
@@ -763,13 +749,13 @@ use crate::{bar::{Bar, Repeat}, play_iter::PlayIter, play_start_tick::{PlayStart
   //   A   |     B    |      C   |   A  |
   #[test]
   fn simple_dc() {
-    let bars = vec![
+    let bars = [
       Bar::new(480, None, None, repeat_set!(Repeat::Fine)),
       Bar::new(960, None, None, repeat_set!()),
       Bar::new(1440, None, None, repeat_set!(Repeat::Dc)),
     ];
 
-    let (region, warnings) = render_region(Rhythm::new(2, 4), bars.iter()).unwrap();
+    let (region, _warnings) = render_region(Rhythm::new(2, 4), bars.iter()).unwrap();
     let chunks = region.to_chunks();
     assert_eq!(chunks.len(), 2);
     assert_eq!(chunks[0], Chunk::new(0, 1440));
@@ -793,7 +779,7 @@ use crate::{bar::{Bar, Repeat}, play_iter::PlayIter, play_start_tick::{PlayStart
   //   A   |     B    |     C   |   A  |   D   |   E   |   F   |   G   |   D   |   E   |
   #[test]
   fn simple_var_dc() {
-    let bars = vec![
+    let bars = [
       Bar::new(480, None, None, repeat_set!(Repeat::Var1)),
       Bar::new(580, None, None, repeat_set!(Repeat::Var1)),
       Bar::new(730, None, None, repeat_set!(Repeat::Var2)),
@@ -836,14 +822,14 @@ use crate::{bar::{Bar, Repeat}, play_iter::PlayIter, play_start_tick::{PlayStart
   // A B B C C D D A B
   #[test]
   fn dc_and_repeat_end() {
-    let bars = vec![
+    let bars = [
       Bar::new(480, None, None, repeat_set!(Repeat::Start)),
       Bar::new(530, None, None, repeat_set!(Repeat::Start, Repeat::End, Repeat::Fine)),
       Bar::new(600, None, None, repeat_set!(Repeat::Start, Repeat::End)),
       Bar::new(1080, None, None, repeat_set!(Repeat::Dc, Repeat::End)),
     ];
 
-    let (region, warnings) = render_region(Rhythm::new(2, 4), bars.iter()).unwrap();
+    let (region, _warnings) = render_region(Rhythm::new(2, 4), bars.iter()).unwrap();
     let chunks = region.to_chunks();
 
     assert_eq!(chunks.len(), 9);
@@ -873,7 +859,7 @@ use crate::{bar::{Bar, Repeat}, play_iter::PlayIter, play_start_tick::{PlayStart
   // A | B | C | D | B | C | E | F | G | H | F | G | I | J
   #[test]
   fn two_vars() {
-    let bars = vec![
+    let bars = [
       Bar::new(50, None, None, repeat_set!(Repeat::Start)),
       Bar::new(100, None, None, repeat_set!()),
       Bar::new(150, None, None, repeat_set!(Repeat::Var1)),
@@ -885,7 +871,7 @@ use crate::{bar::{Bar, Repeat}, play_iter::PlayIter, play_start_tick::{PlayStart
       Bar::new(450, None, None, repeat_set!()),
     ];
 
-    let (region, warnings) = render_region(Rhythm::new(2, 4), bars.iter()).unwrap();
+    let (region, _warnings) = render_region(Rhythm::new(2, 4), bars.iter()).unwrap();
     let chunks = region.to_chunks();
 
     assert_eq!(chunks.len(), 10);
@@ -916,7 +902,7 @@ use crate::{bar::{Bar, Repeat}, play_iter::PlayIter, play_start_tick::{PlayStart
   // A | B | C | D | B | C | E | F | G | H | I | J | G | H | K | L
   #[test]
   fn two_vars_with_end_bar() {
-    let bars = vec![
+    let bars = [
       Bar::new(50, None, None, repeat_set!(Repeat::Start)),
       Bar::new(100, None, None, repeat_set!()),
       Bar::new(150, None, None, repeat_set!(Repeat::Var1)),
@@ -931,7 +917,7 @@ use crate::{bar::{Bar, Repeat}, play_iter::PlayIter, play_start_tick::{PlayStart
       Bar::new(600, None, None, repeat_set!()),
     ];
 
-    let (region, warnings) = render_region(Rhythm::new(2, 4), bars.iter()).unwrap();
+    let (region, _warnings) = render_region(Rhythm::new(2, 4), bars.iter()).unwrap();
     let chunks = region.to_chunks();
 
     assert_eq!(chunks.len(), 11);
@@ -964,7 +950,7 @@ use crate::{bar::{Bar, Repeat}, play_iter::PlayIter, play_start_tick::{PlayStart
   // |  N | O  | B  | C  | E  | F  | G  | H  | J  |
   #[test]
   fn repeat_and_dc() {
-    let bars = vec![
+    let bars = [
       Bar::new(240, None, None, repeat_set!(Repeat::Start)),
       Bar::new(320, None, None, repeat_set!()),
       Bar::new(370, None, None, repeat_set!(Repeat::Var1)),
@@ -982,7 +968,7 @@ use crate::{bar::{Bar, Repeat}, play_iter::PlayIter, play_start_tick::{PlayStart
       Bar::new(970, None, None, repeat_set!(Repeat::Dc)),
     ];
 
-    let (region, warnings) = render_region(Rhythm::new(2, 4), bars.iter()).unwrap();
+    let (region, _warnings) = render_region(Rhythm::new(2, 4), bars.iter()).unwrap();
     let chunks = region.to_chunks();
 
     assert_eq!(chunks.len(), 19);
@@ -1033,13 +1019,13 @@ use crate::{bar::{Bar, Repeat}, play_iter::PlayIter, play_start_tick::{PlayStart
   //   A  |     B     |  A  |     B     |  C   |  C  |
   #[test]
   fn consecutive_repeat() {
-    let bars = vec![
+    let bars = [
       Bar::new(50, None, None, repeat_set!()),
       Bar::new(200, None, None, repeat_set!(Repeat::Start, Repeat::End)),
       Bar::new(300, None, None, repeat_set!(Repeat::End)),
     ];
 
-    let (region, warnings) = render_region(Rhythm::new(2, 4), bars.iter()).unwrap();
+    let (region, _warnings) = render_region(Rhythm::new(2, 4), bars.iter()).unwrap();
     let chunks = region.to_chunks();
     assert_eq!(chunks.len(), 5);
 
@@ -1065,13 +1051,13 @@ use crate::{bar::{Bar, Repeat}, play_iter::PlayIter, play_start_tick::{PlayStart
   //   A  |     B     |  A  |     B     |  C   |  C  |   B  |
   #[test]
   fn fine_and_repeat() {
-    let bars = vec![
+    let bars = [
       Bar::new(120, None, None, repeat_set!()),
       Bar::new(270, None, None, repeat_set!(Repeat::Start, Repeat::End, Repeat::Fine)),
       Bar::new(370, None, None, repeat_set!(Repeat::Dc, Repeat::End)),
     ];
 
-    let (region, warnings) = render_region(Rhythm::new(1, 4), bars.iter()).unwrap();
+    let (region, _warnings) = render_region(Rhythm::new(1, 4), bars.iter()).unwrap();
     let chunks = region.to_chunks();
     assert_eq!(chunks.len(), 5);
 
@@ -1099,14 +1085,14 @@ use crate::{bar::{Bar, Repeat}, play_iter::PlayIter, play_start_tick::{PlayStart
   // A  B  B   C   C   D   D   B 
   #[test]
   fn dc_and_repeat() {
-    let bars = vec![
+    let bars = [
       Bar::new(120, None, None, repeat_set!(Repeat::Start)),
       Bar::new(170, None, None, repeat_set!(Repeat::Start, Repeat::End, Repeat::Fine)),
       Bar::new(270, None, None, repeat_set!(Repeat::Start, Repeat::End)),
       Bar::new(370, None, None, repeat_set!(Repeat::Dc, Repeat::End)),
     ];
 
-    let (region, warnings) = render_region(Rhythm::new(1, 4), bars.iter()).unwrap();
+    let (region, _warnings) = render_region(Rhythm::new(1, 4), bars.iter()).unwrap();
     let chunks = region.to_chunks();
     assert_eq!(chunks.len(), 8);
 
@@ -1137,7 +1123,7 @@ use crate::{bar::{Bar, Repeat}, play_iter::PlayIter, play_start_tick::{PlayStart
   // A B C D C D B C D E
   #[test]
   fn dc_without_fine() {
-    let bars = vec![
+    let bars = [
       Bar::new(120, None, None, repeat_set!()),
       Bar::new(170, None, None, repeat_set!(Repeat::Start)),
       Bar::new(270, None, None, repeat_set!()),
@@ -1145,7 +1131,7 @@ use crate::{bar::{Bar, Repeat}, play_iter::PlayIter, play_start_tick::{PlayStart
       Bar::new(470, None, None, repeat_set!()),
     ];
 
-    let (region, warnings) = render_region(Rhythm::new(1, 4), bars.iter()).unwrap();
+    let (region, _warnings) = render_region(Rhythm::new(1, 4), bars.iter()).unwrap();
     let chunks = region.to_chunks();
     assert_eq!(chunks.len(), 6);
 
@@ -1172,14 +1158,14 @@ use crate::{bar::{Bar, Repeat}, play_iter::PlayIter, play_start_tick::{PlayStart
   //   A  |     B     |  C  |     A     |  B   |  C  |   D  |  D  | A | B |
   #[test]
   fn simple_ds() {
-    let bars = vec![
+    let bars = [
       Bar::new(120, None, None, repeat_set!()),
       Bar::new(200, None, None, repeat_set!(Repeat::Segno)),
       Bar::new(270, None, None, repeat_set!(Repeat::Start, Repeat::End, Repeat::Fine)),
       Bar::new(370, None, None, repeat_set!(Repeat::Ds, Repeat::End)),
     ];
 
-    let (region, warnings) = render_region(Rhythm::new(1, 4), bars.iter()).unwrap();
+    let (region, _warnings) = render_region(Rhythm::new(1, 4), bars.iter()).unwrap();
     let chunks = region.to_chunks();
     assert_eq!(chunks.len(), 5);
 
@@ -1206,7 +1192,7 @@ use crate::{bar::{Bar, Repeat}, play_iter::PlayIter, play_start_tick::{PlayStart
   //   A  |  B  |  C  |  A  |  B  |  C  |   D  |  E  | D | F | C
   #[test]
   fn var_and_ds() {
-    let bars = vec![
+    let bars = [
       Bar::new(120, None, None, repeat_set!()),
       Bar::new(200, None, None, repeat_set!(Repeat::Segno)),
       Bar::new(270, None, None, repeat_set!(Repeat::Start, Repeat::End, Repeat::Fine)),
@@ -1215,7 +1201,7 @@ use crate::{bar::{Bar, Repeat}, play_iter::PlayIter, play_start_tick::{PlayStart
       Bar::new(570, None, None, repeat_set!(Repeat::Ds)),
     ];
 
-    let (region, warnings) = render_region(Rhythm::new(1, 4), bars.iter()).unwrap();
+    let (region, _warnings) = render_region(Rhythm::new(1, 4), bars.iter()).unwrap();
     let chunks = region.to_chunks();
     assert_eq!(chunks.len(), 7);
 
@@ -1245,7 +1231,7 @@ use crate::{bar::{Bar, Repeat}, play_iter::PlayIter, play_start_tick::{PlayStart
   //   A  |  B  |  C  |  A  |  B  |  C  |  D | E | F | G | C | D | G
   #[test]
   fn ds_and_coda() {
-    let bars = vec![
+    let bars = [
       Bar::new(120, None, None, repeat_set!()),
       Bar::new(200, None, None, repeat_set!(Repeat::Segno)),
       Bar::new(270, None, None, repeat_set!(Repeat::End)),
@@ -1255,7 +1241,7 @@ use crate::{bar::{Bar, Repeat}, play_iter::PlayIter, play_start_tick::{PlayStart
       Bar::new(670, None, None, repeat_set!(Repeat::Ds)),
     ];
 
-    let (region, warnings) = render_region(Rhythm::new(1, 4), bars.iter()).unwrap();
+    let (region, _warnings) = render_region(Rhythm::new(1, 4), bars.iter()).unwrap();
     let chunks = region.to_chunks();
     assert_eq!(chunks.len(), 6);
 
@@ -1283,7 +1269,7 @@ use crate::{bar::{Bar, Repeat}, play_iter::PlayIter, play_start_tick::{PlayStart
   //   A  |  B  |  C  |  A  |  B  |  C  |  D | E | G 
   #[test]
   fn ds_and_coda_fine() {
-    let bars = vec![
+    let bars = [
       Bar::new(120, None, None, repeat_set!()),
       Bar::new(200, None, None, repeat_set!(Repeat::Segno)),
       Bar::new(270, None, None, repeat_set!(Repeat::End)),
@@ -1294,7 +1280,7 @@ use crate::{bar::{Bar, Repeat}, play_iter::PlayIter, play_start_tick::{PlayStart
       Bar::new(770, None, None, repeat_set!(Repeat::Ds)),
     ];
 
-    let (region, warnings) = render_region(Rhythm::new(1, 4), bars.iter()).unwrap();
+    let (region, _warnings) = render_region(Rhythm::new(1, 4), bars.iter()).unwrap();
     let chunks = region.to_chunks();
     assert_eq!(chunks.len(), 6);
 
@@ -1322,7 +1308,7 @@ use crate::{bar::{Bar, Repeat}, play_iter::PlayIter, play_start_tick::{PlayStart
   //   A  |  B  |  C  |  A  |  B  |  C  |  D | E | F | C | D | H
   #[test]
   fn ds_and_coda_skip_ds() {
-    let bars = vec![
+    let bars = [
       Bar::new(120, None, None, repeat_set!()),
       Bar::new(200, None, None, repeat_set!(Repeat::Segno)),
       Bar::new(270, None, None, repeat_set!(Repeat::End)),
@@ -1332,7 +1318,7 @@ use crate::{bar::{Bar, Repeat}, play_iter::PlayIter, play_start_tick::{PlayStart
       Bar::new(670, None, None, repeat_set!(Repeat::Coda)),
     ];
 
-    let (region, warnings) = render_region(Rhythm::new(1, 4), bars.iter()).unwrap();
+    let (region, _warnings) = render_region(Rhythm::new(1, 4), bars.iter()).unwrap();
     let chunks = region.to_chunks();
     assert_eq!(chunks.len(), 6);
 
@@ -1418,7 +1404,7 @@ use crate::{bar::{Bar, Repeat}, play_iter::PlayIter, play_start_tick::{PlayStart
   // A B
   #[test]
   fn dc_goes_to_fine() {
-    let bars = vec![
+    let bars = [
       Bar::new(200, None, None, repeat_set!(Repeat::Fine)),
       Bar::new(400, None, None, repeat_set!(Repeat::Dc)),
     ];
@@ -1434,7 +1420,7 @@ use crate::{bar::{Bar, Repeat}, play_iter::PlayIter, play_start_tick::{PlayStart
   // A  B  C  A  B
   #[test]
   fn dc_and_auftakt() {
-    let bars = vec![
+    let bars = [
       Bar::new(240, None, None, repeat_set!()),
       Bar::new(1200, None, None, repeat_set!(Repeat::Fine)),
       Bar::new(1920, None, None, repeat_set!(Repeat::Dc)),

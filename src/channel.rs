@@ -1,5 +1,5 @@
 #[derive(serde::Deserialize, serde::Serialize)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct Channel(u8);
 
 impl Channel {
@@ -14,10 +14,4 @@ impl Channel {
   pub fn as_u8(self) -> u8 {
     self.0
   }
-}
-
-impl Default for Channel {
-    fn default() -> Self {
-        Self(0)
-    }
 }

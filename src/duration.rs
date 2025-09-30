@@ -1,4 +1,4 @@
-use std::hash::{Hash};
+use std::{fmt, hash::Hash};
 
 #[derive(serde::Deserialize, serde::Serialize)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
@@ -68,9 +68,9 @@ impl From<SerializedDenominator> for Denominator {
     }
 }
 
-impl ToString for Denominator {
-    fn to_string(&self) -> String {
-        self.0.to_string()
+impl fmt::Display for Denominator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
@@ -130,21 +130,11 @@ impl Dots {
 // dot
 // 0-7
 #[derive(serde::Deserialize, serde::Serialize)]
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Default)]
 pub struct Duration {
     pub numerator: Numerator,
     pub denominator: Denominator,
     pub dots: Dots,
-}
-
-impl Default for Duration {
-    fn default() -> Self {
-        Self {
-            numerator: Default::default(),
-            denominator: Default::default(),
-            dots: Default::default()
-        }
-    }
 }
 
 impl Duration {

@@ -43,12 +43,12 @@ impl Trimmer {
 
     pub const fn from_array(values: [i16; 4]) -> Self {
         Self {
-            values: values,
+            values,
             sum: (values[0] + values[1] + values[2] + values[3]) as i32,
         }
     }
 
-    pub fn from_vec(values: &Vec<i16>) -> Self {
+    pub fn from_vec(values: &[i16]) -> Self {
         Self {
             values: [values[0], values[1], values[2], values[3]],
             sum: (values[0] + values[1] + values[2] + values[3]) as i32,
@@ -83,7 +83,7 @@ impl Trimmer {
 
     pub fn added(mut self, mut tick: i32) -> Self {
         for i in 0..4 {
-            let t: i32 = self.values[i] as i32 + tick as i32;
+            let t: i32 = self.values[i] as i32 + tick;
             if (i16::MAX as i32) < t {
                 tick = t - i16::MAX as i32;
                 self.values[i] = i16::MAX;
@@ -98,7 +98,7 @@ impl Trimmer {
 
         self.sum = self.values[0] as i32 +self.values[1] as i32 +
             self.values[2] as i32 + self.values[3] as i32;
-        return self;
+        self
     }
 }
 
@@ -170,26 +170,26 @@ impl RateTrimmer {
         }
     }
 
-    pub fn from_vec(values: &Vec<PercentU16>) -> Self {
+    pub fn from_vec(values: &[PercentU16]) -> Self {
         Self {
             values: [values[0], values[1], values[2], values[3]],
             sum: PercentU16::from(values[0].to_f32() * values[1].to_f32() * values[2].to_f32() * values[3].to_f32()),
         }
     }
 
-    pub fn to_vec(self: &Self) -> Vec<PercentU16> {
+    pub fn to_vec(&self) -> Vec<PercentU16> {
         vec![self.values[0], self.values[1], self.values[2], self.values[3]]
     }
 
-    pub fn value(self: &Self, idx: usize) -> PercentU16 {
+    pub fn value(&self, idx: usize) -> PercentU16 {
         self.values[idx]
     }
 
-    pub fn values(self: &Self) -> &[PercentU16] {
+    pub fn values(&self) -> &[PercentU16] {
         &self.values
     }
 
-    pub fn sum(self: &Self) -> PercentU16 {
+    pub fn sum(&self) -> PercentU16 {
         self.sum
     }
 }
