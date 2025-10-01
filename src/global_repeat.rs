@@ -1,4 +1,4 @@
-use error_stack::{Report, report};
+use error_stack::{Report, IntoReport};
 use interval::{IntervalSet, interval_set::ToIntervalSet};
 use crate::{rhythm::Rhythm, repeat::RenderRegionError, bar::{Bar, Repeat}, have_start_tick::HaveBaseStartTick};
 
@@ -85,9 +85,9 @@ impl GlobalRepeatBuilder {
           Ok(self)
         }
         Some(DsDc::Dc { tick: prev_tick, len: _ }) =>
-          Err(report!(RenderRegionError::DuplicatedDsDc { tick: [prev_tick, dc_loc] })),
+          Err(IntoReport::into_report(RenderRegionError::DuplicatedDsDc { tick: [prev_tick, dc_loc] })),
         Some(DsDc::Ds { tick: prev_tick }) =>
-          Err(report!(RenderRegionError::DuplicatedDsDc { tick: [prev_tick, dc_loc] })),
+          Err(IntoReport::into_report(RenderRegionError::DuplicatedDsDc { tick: [prev_tick, dc_loc] })),
       }
   }
 
@@ -98,16 +98,16 @@ impl GlobalRepeatBuilder {
           Ok(self)
         }
         Some(DsDc::Dc { tick: prev_tick, len: _ }) =>
-          Err(report!(RenderRegionError::DuplicatedDsDc { tick: [prev_tick, tick] })),
+          Err(IntoReport::into_report(RenderRegionError::DuplicatedDsDc { tick: [prev_tick, tick] })),
         Some(DsDc::Ds{ tick: prev_tick } ) =>
-          Err(report!(RenderRegionError::DuplicatedDsDc { tick: [prev_tick, tick] })),
+          Err(IntoReport::into_report(RenderRegionError::DuplicatedDsDc { tick: [prev_tick, tick] })),
       }
   }
 
   fn adding_fine(mut self, tick: u32) -> Result<Self, Report<RenderRegionError>> {
     match self.fine {
         Some(prev_tick) =>
-          Err(report!(RenderRegionError::DuplicatedFine { tick: [prev_tick, tick] })),
+          Err(IntoReport::into_report(RenderRegionError::DuplicatedFine { tick: [prev_tick, tick] })),
         None => {
           self.fine = Some(tick);
           Ok(self)
@@ -118,7 +118,7 @@ impl GlobalRepeatBuilder {
   pub fn adding_segno(mut self, tick: u32) -> Result<Self, Report<RenderRegionError>> {
     match self.segno {
       Some(prev_tick) =>
-        Err(report!(RenderRegionError::DuplicatedSegno { tick: [prev_tick, tick] })),
+        Err(IntoReport::into_report(RenderRegionError::DuplicatedSegno { tick: [prev_tick, tick] })),
       None => {
         self.segno = Some(tick);
         Ok(self)
@@ -137,7 +137,7 @@ impl GlobalRepeatBuilder {
         Ok(self)
       }
       Some(Coda::Two { from_tick, to_tick }) =>
-        Err(report!(RenderRegionError::MoreThanTwoCodas { tick: [from_tick, to_tick, tick] }))
+        Err(IntoReport::into_report(RenderRegionError::MoreThanTwoCodas { tick: [from_tick, to_tick, tick] }))
     }
   }
 
@@ -184,7 +184,7 @@ impl GlobalRepeatBuilder {
   fn check_coda_pos(coda_from: u32, coda_to: u32, fine: Option<u32>) -> Result<(), Report<RenderRegionError>> {
     if let Some(fine) = fine {
       if fine < coda_to {
-        Err(report!(RenderRegionError::CodaAfterFine { coda_from, coda_to, fine }))
+        Err(IntoReport::into_report(RenderRegionError::CodaAfterFine { coda_from, coda_to, fine }))
       } else {
         Ok(())
       }
@@ -256,12 +256,12 @@ impl GlobalRepeatBuilder {
           DsDc::Ds { tick } => {
             let segno_tick = match self.segno {
               Some(segno_tick) => segno_tick,
-              None => return Err(report!(RenderRegionError::NoSegnoForDs { ds_tick: tick }))
+              None => return Err(IntoReport::into_report(RenderRegionError::NoSegnoForDs { ds_tick: tick }))
             };
             let coda = match self.coda {
               None => None,
               Some(Coda::One(tick_tick)) => {
-                return Err(report!(RenderRegionError::OnlyOneCoda { tick: tick_tick }))
+                return Err(IntoReport::into_report(RenderRegionError::OnlyOneCoda { tick: tick_tick }))
               }
               Some(Coda::Two { from_tick, to_tick }) => {
                 Self::check_coda_pos(from_tick, to_tick, self.fine)?;

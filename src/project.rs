@@ -1,6 +1,7 @@
 use std::rc::Rc;
 use std::slice;
 
+use error_stack::IntoReport;
 use klavier_helper::bag_store::{BagStore, BagStoreEvent};
 use klavier_helper::store::{Store, StoreEvent};
 use serde::{Serialize, Deserialize};
@@ -691,7 +692,7 @@ impl Project for SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr> {
                     }
                 )
             } else {
-                Err(error_stack::report!(ProjectCmdErr::NoOp))
+                Err(IntoReport::into_report(ProjectCmdErr::NoOp))
             }
         }));
         

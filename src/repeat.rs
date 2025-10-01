@@ -1,5 +1,5 @@
 use std::{ops::Range, fmt::Display};
-use error_stack::{Report, report};
+use error_stack::{Report, IntoReport};
 use gcollections::ops::{Intersection, Union, Bounded};
 use interval::{IntervalSet, interval_set::ToIntervalSet};
 use klavier_helper::store::Store;
@@ -407,7 +407,7 @@ pub fn render_region<'a>(
           RenderRegionState::RepeatStart { start_tick: bar.base_start_tick() }
         } else if let Some(idx) = bar.repeats.region_index() {
           if idx != VarIndex::VI1 {
-            return Err(report!(RenderRegionError::InvalidRegionIndex { tick: bar.base_start_tick(), actual: idx, expected: VarIndex::VI1 }));
+            return Err(IntoReport::into_report(RenderRegionError::InvalidRegionIndex { tick: bar.base_start_tick(), actual: idx, expected: VarIndex::VI1 }));
           }
           RenderRegionState::Variation { start_tick: 0, region_start_ticks: vec![bar.base_start_tick()] }
         } else {
@@ -416,7 +416,7 @@ pub fn render_region<'a>(
       },
       RenderRegionState::Seq { start_tick } => {
         if bar.repeats.contains(Repeat::End) {
-          return Err(report!(RenderRegionError::OrphanRepeatEnd{ tick: bar.base_start_tick() }));
+          return Err(IntoReport::into_report(RenderRegionError::OrphanRepeatEnd{ tick: bar.base_start_tick() }));
         } else if bar.repeats.contains(Repeat::Start) {
           regions.push(Box::new(SequenceRegion { tick_range: *start_tick..bar.base_start_tick() }));
           RenderRegionState::RepeatStart { start_tick: bar.base_start_tick() }
@@ -432,12 +432,12 @@ pub fn render_region<'a>(
           regions.push(Box::new(RepeatRegion { region: SequenceRegion { tick_range: *start_tick..bar.base_start_tick() }}));
           RenderRegionState::Seq { start_tick: bar.base_start_tick() }
         } else if bar.repeats.contains(Repeat::Start) {
-          return Err(report!(RenderRegionError::DuplicatedRepeatStart { tick: bar.base_start_tick() }));
+          return Err(IntoReport::into_report(RenderRegionError::DuplicatedRepeatStart { tick: bar.base_start_tick() }));
         } else if bar.repeats.contains(Repeat::Dc) || bar.repeats.contains(Repeat::Ds) {
-          return Err(report!(RenderRegionError::DcDsWhileRepeat { tick: bar.base_start_tick() }));
+          return Err(IntoReport::into_report(RenderRegionError::DcDsWhileRepeat { tick: bar.base_start_tick() }));
         } else if let Some(idx) = bar.repeats.region_index() {
           if idx != VarIndex::VI1 {
-            return Err(report!(RenderRegionError::InvalidRegionIndex { tick: bar.base_start_tick(), actual: idx, expected: VarIndex::VI1 }));
+            return Err(IntoReport::into_report(RenderRegionError::InvalidRegionIndex { tick: bar.base_start_tick(), actual: idx, expected: VarIndex::VI1 }));
           }
           RenderRegionState::Variation { start_tick: *start_tick, region_start_ticks: vec![bar.base_start_tick()] }
         } else {
@@ -446,10 +446,10 @@ pub fn render_region<'a>(
       },
       RenderRegionState::Variation { start_tick, region_start_ticks } => {
         if bar.repeats.contains(Repeat::End) {
-          return Err(report!(RenderRegionError::RepeatInVariation { tick: bar.base_start_tick() }))
+          return Err(IntoReport::into_report(RenderRegionError::RepeatInVariation { tick: bar.base_start_tick() }))
         } else if let Some(ri) = bar.repeats.region_index() {
           if bar.repeats.contains(Repeat::Dc) || bar.repeats.contains(Repeat::Ds) {
-            return Err(report!(RenderRegionError::DcDsWhileVariation { tick: bar.base_start_tick() }));
+            return Err(IntoReport::into_report(RenderRegionError::DcDsWhileVariation { tick: bar.base_start_tick() }));
           }
           let current_idx = region_start_ticks.len() as u8;
           let idx = ri.value();
@@ -460,14 +460,14 @@ pub fn render_region<'a>(
             rst.push(bar.base_start_tick());
             RenderRegionState::Variation { start_tick: *start_tick, region_start_ticks: rst }
           } else {
-            return Err(report!(RenderRegionError::InvalidRegionIndex {
+            return Err(IntoReport::into_report(RenderRegionError::InvalidRegionIndex {
               tick: bar.base_start_tick(), actual: ri, expected: VarIndex::from_value(current_idx + 1).unwrap()
             }));
           }
         } else {
           if let Some(segno) = global_repeat.segno {
             if region_start_ticks[0] <= segno && segno < *region_start_ticks.last().unwrap() {
-              return Err(report!(RenderRegionError::SegnoWhildVariation { tick: bar.base_start_tick() }));
+              return Err(IntoReport::into_report(RenderRegionError::SegnoWhildVariation { tick: bar.base_start_tick() }));
             }
           }
           regions.push(create_variation(*start_tick, region_start_ticks.clone(), bar.base_start_tick()));
@@ -493,9 +493,9 @@ pub fn render_region<'a>(
       let (gr, w) = global_repeat.build()?;
       Ok((Box::new(CompoundRegion { regions, global_repeat: gr }), w))
     }
-    RenderRegionState::RepeatStart { start_tick } => Err(report!(RenderRegionError::NoRepeatEnd { tick: start_tick })),
+    RenderRegionState::RepeatStart { start_tick } => Err(IntoReport::into_report(RenderRegionError::NoRepeatEnd { tick: start_tick })),
     RenderRegionState::Variation { start_tick: _, region_start_ticks } => {
-      Err(report!(RenderRegionError::VariationNotClosed { tick: *region_start_ticks.last().unwrap() }))
+      Err(IntoReport::into_report(RenderRegionError::VariationNotClosed { tick: *region_start_ticks.last().unwrap() }))
     }
   }
 }
