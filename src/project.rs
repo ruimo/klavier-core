@@ -607,7 +607,7 @@ impl Project for SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr> {
         let mut metadata = ModelChangeMetadata::default();
         if select { metadata.need_select = Some(true); }
         let _ = self.mutate(Box::new(move |proj| {
-            let origin = proj.bar_repo.add(bar.start_tick, bar, metadata).map(|o| vec![o]).unwrap_or(vec![]);
+            let origin = proj.bar_repo.add(bar.start_tick, bar, metadata).map(|o| vec![o]).unwrap_or_default();
             
             Ok(
                 ProjectCmd::ModelChanged {
@@ -623,7 +623,7 @@ impl Project for SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr> {
         let mut metadata = ModelChangeMetadata::default();
         if select { metadata.need_select = Some(true); }
         let _ = self.mutate(Box::new(move |proj| {
-            let origin = proj.tempo_repo.add(tempo.start_tick, tempo, metadata).map(|o| vec![o]).unwrap_or(vec![]);
+            let origin = proj.tempo_repo.add(tempo.start_tick, tempo, metadata).map(|o| vec![o]).unwrap_or_default();
             let replenishid_bars = proj.replenish_bars();
             Ok(
                 ProjectCmd::ModelChanged {
@@ -640,7 +640,7 @@ impl Project for SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr> {
         let mut metadata = ModelChangeMetadata::default();
         if select { metadata.need_select = Some(true); }
         let _ = self.mutate(Box::new(move |proj| {
-            let origin = proj.dumper_repo.add(dumper.start_tick, dumper, metadata).map(|o| vec![o]).unwrap_or(vec![]);
+            let origin = proj.dumper_repo.add(dumper.start_tick, dumper, metadata).map(|o| vec![o]).unwrap_or_default();
             let replenishid_bars = proj.replenish_bars();
             Ok(
                 ProjectCmd::ModelChanged {
@@ -656,7 +656,7 @@ impl Project for SqliteUndoStore::<ProjectCmd, ProjectImpl, ProjectCmdErr> {
         let mut metadata = ModelChangeMetadata::default();
         if select { metadata.need_select = Some(true); }
         let _ = self.mutate(Box::new(move |proj| {
-            let origin = proj.soft_repo.add(soft.start_tick, soft, metadata).map(|o| vec![o]).unwrap_or(vec![]);
+            let origin = proj.soft_repo.add(soft.start_tick, soft, metadata).map(|o| vec![o]).unwrap_or_default();
             let replenishid_bars = proj.replenish_bars();
             Ok(
                 ProjectCmd::ModelChanged {
