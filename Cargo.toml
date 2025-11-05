@@ -1,6 +1,6 @@
 [package]
 name = "klavier-core"
-version = "0.1.8-beta.1"
+version = "0.1.8"
 edition = "2021"
 description = "Core library of klavier."
 license = "Apache-2.0"
