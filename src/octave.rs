@@ -1,8 +1,10 @@
 use std::ops::{Add, AddAssign, SubAssign};
 use std::fmt;
 
+/// Error type for octave operations.
 #[derive(Debug)]
 pub enum OctaveError {
+    /// The octave value is out of valid range (-2 to 8).
     InvalidValue(i32),
 }
 
@@ -16,28 +18,88 @@ impl fmt::Display for OctaveError {
     }
 }
 
+/// Musical octave number.
+///
+/// Represents the octave of a pitch, ranging from -2 to 8.
+/// Octave 3 contains middle C (C3 = MIDI note 60).
+///
+/// # Examples
+///
+/// ```
+/// # use klavier_core::octave::Octave;
+/// let middle_octave = Octave::Oct3;  // Contains middle C (MIDI note 60)
+/// let low_octave = Octave::Oct0;
+/// let high_octave = Octave::Oct8;
+/// ```
 #[derive(serde::Deserialize, serde::Serialize)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum Octave {
-    OctM2, OctM1, Oct0, Oct1, Oct2, Oct3, Oct4, Oct5, Oct6, Oct7, Oct8,
+    /// Octave -2
+    OctM2,
+    /// Octave -1
+    OctM1,
+    /// Octave 0
+    Oct0,
+    /// Octave 1
+    Oct1,
+    /// Octave 2
+    Oct2,
+    /// Octave 3
+    Oct3,
+    /// Octave 4
+    Oct4,
+    /// Octave 5
+    Oct5,
+    /// Octave 6
+    Oct6,
+    /// Octave 7
+    Oct7,
+    /// Octave 8
+    Oct8,
 }
 
+/// Maximum octave value (8).
 pub const MAX: Octave = Octave::Oct8;
+/// Minimum octave value (-2).
 pub const MIN: Octave = Octave::OctM2;
 
 impl Octave {
+    /// Array of all valid octaves.
     pub const ALL: &'static [Octave] = &[
         Self::OctM2, Self::OctM1, Self::Oct0, Self::Oct1, Self::Oct2,
         Self::Oct3, Self::Oct4, Self::Oct5, Self::Oct6, Self::Oct7, Self::Oct8,
     ];
+    /// Minimum octave constant.
     pub const MIN_VALUE: Octave = Octave::OctM2;
+    /// Maximum octave constant.
     pub const MAX_VALUE: Octave = Octave::Oct8;
+    /// Bias value for internal calculations.
     pub const BIAS_VALUE: i32 = 2;
 
+    /// Creates an octave from a numeric value (-2 to 8).
+    ///
+    /// # Arguments
+    ///
+    /// * `value` - The octave number (-2 to 8).
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(Octave)` - The octave.
+    /// - `Err(OctaveError)` - If the value is out of range.
     pub const fn value_of(value: i32) -> Result<Octave, OctaveError> {
         Self::from_score_offset(value + Self::BIAS_VALUE)
     }
 
+    /// Creates an octave from a score offset index.
+    ///
+    /// # Arguments
+    ///
+    /// * `idx` - The score offset index (0-10).
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(Octave)` - The octave.
+    /// - `Err(OctaveError)` - If the index is out of range.
     pub const fn from_score_offset(idx: i32) -> Result<Octave, OctaveError> {
         if idx < 0 || Self::ALL.len() < (idx as usize) {
             Err(OctaveError::InvalidValue(idx))
@@ -46,10 +108,12 @@ impl Octave {
         }
     }
 
+    /// Returns the score offset for this octave.
     pub const fn offset(self) -> i32 {
         self.value() + Self::BIAS_VALUE
     }
 
+    /// Returns the numeric value of this octave (-2 to 8).
     pub const fn value(self) -> i32 {
         match self {
             Self::OctM2 => -2,

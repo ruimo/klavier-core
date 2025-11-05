@@ -5,10 +5,14 @@ use std::fmt::{self};
 use derive_builder::Builder;
 use super::octave;
 
+/// Error type for pitch-related operations.
 #[derive(Debug)]
 pub enum PitchError {
+    /// The pitch is too low (below MIDI note 0).
     TooLow(Solfa, Octave, SharpFlat, i32),
+    /// The pitch is too high (above MIDI note 127).
     TooHigh(Solfa, Octave, SharpFlat, i32),
+    /// The score offset is out of valid range.
     InvalidScoreOffset(i32),
 }
 
@@ -28,18 +32,39 @@ impl fmt::Display for PitchError {
     }
 }
 
+/// Represents a musical pitch with solfa, octave, and accidental.
+///
+/// A pitch combines a note name (solfa), octave, and accidental (sharp/flat)
+/// to represent a specific musical note. It also caches the MIDI note value
+/// and score offset for efficient access.
+///
+/// # Examples
+///
+/// ```
+/// # use klavier_core::pitch::Pitch;
+/// # use klavier_core::solfa::Solfa;
+/// # use klavier_core::octave::Octave;
+/// # use klavier_core::sharp_flat::SharpFlat;
+/// let middle_c = Pitch::new(Solfa::C, Octave::Oct3, SharpFlat::Null);
+/// assert_eq!(middle_c.value(), 60); // MIDI note 60 (Middle C)
+/// ```
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(from = "PitchSerializedForm")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Builder)]
 #[builder(default)]
 pub struct Pitch {
+    /// The note name (C, D, E, F, G, A, B).
     solfa: Solfa,
+    /// The octave number.
     octave: Octave,
+    /// The accidental (sharp, flat, natural, etc.).
     sharp_flat: SharpFlat,
 
-    #[serde(skip)]    
+    /// Cached MIDI note value (0-127).
+    #[serde(skip)]
     value: u8,
-    #[serde(skip)]    
+    /// Cached score offset for staff position.
+    #[serde(skip)]
     score_offset: i8,
 }
 
@@ -62,17 +87,35 @@ struct PitchSerializedForm {
     sharp_flat: SharpFlat,
 }
 
+/// Maximum MIDI note value (127).
 pub const MAX_VALUE: i8 = 127;
+/// Minimum MIDI note value (0).
 pub const MIN_VALUE: i8 = 0;
 
+/// Minimum pitch (C at octave -2, MIDI note 0).
 pub const MIN: Pitch = Pitch::new(Solfa::C, Octave::OctM2, SharpFlat::Null);
+/// Maximum pitch (G at octave 8, MIDI note 127).
 pub const MAX: Pitch = Pitch::new(Solfa::G, Octave::Oct8, SharpFlat::Null);
+/// Default pitch (A4, concert A, MIDI note 69).
 const DEFAULT: Pitch = Pitch::new(Solfa::A, Octave::Oct4, SharpFlat::Null);
 
+/// Minimum score offset value.
 pub const MIN_SCORE_OFFSET: i32 = 0;
+/// Maximum score offset value.
 pub const MAX_SCORE_OFFSET: i32 = 74;
 
 impl Pitch {
+    /// Creates a new pitch from solfa, octave, and accidental.
+    ///
+    /// # Arguments
+    ///
+    /// * `solfa` - The note name.
+    /// * `octave` - The octave number.
+    /// * `sharp_flat` - The accidental.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the combination results in an invalid MIDI note (< 0 or > 127).
     pub const fn new(solfa: Solfa, octave: Octave, sharp_flat: SharpFlat) -> Self {
         match Self::value_of(solfa, octave, sharp_flat) {
             Err(_pe) => panic!("Logic error."),
@@ -80,6 +123,18 @@ impl Pitch {
         }
     }
 
+    /// Applies a key signature to this pitch.
+    ///
+    /// If the pitch has no accidental (Null), this method applies the
+    /// appropriate sharp or flat based on the key signature.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The key signature to apply.
+    ///
+    /// # Returns
+    ///
+    /// The pitch with the key signature applied, or an error if invalid.
     pub fn apply_key(self, key: Key) -> Result<Self, PitchError> {
         let solfas = Key::SOLFAS;
         if self.sharp_flat == SharpFlat::Null {
@@ -180,6 +235,12 @@ impl Pitch {
         self.sharp_flat
     }
 
+    /// Moves the pitch up by one semitone (half step).
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(Pitch)` - The pitch raised by one semitone.
+    /// - `Err(PitchError)` - If already at the maximum pitch.
     pub fn up(self) -> Result<Self, PitchError> {
         let mut solfa = self.solfa;
         let mut octave = self.octave;
@@ -197,6 +258,12 @@ impl Pitch {
         Self::value_of(solfa, octave, self.sharp_flat)
     }
 
+    /// Moves the pitch down by one semitone (half step).
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(Pitch)` - The pitch lowered by one semitone.
+    /// - `Err(PitchError)` - If already at the minimum pitch.
     pub fn down(self) -> Result<Self, PitchError> {
         let mut solfa = self.solfa;
         let mut octave = self.octave;
@@ -214,16 +281,19 @@ impl Pitch {
         Self::value_of(solfa, octave, self.sharp_flat)
     }
 
+    /// Returns the solfa (note name) of this pitch.
     #[inline]
     pub fn solfa(self) -> Solfa {
         self.solfa
     }
 
+    /// Returns the octave of this pitch.
     #[inline]
     pub fn octave(self) -> Octave {
         self.octave
     }
 
+    /// Returns the MIDI note value (0-127) of this pitch.
     #[inline]
     pub fn value(self) -> u8 {
         self.value

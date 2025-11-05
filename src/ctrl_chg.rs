@@ -1,19 +1,48 @@
 use crate::channel::Channel;
 use super::{note::TickError, have_start_tick::{HaveBaseStartTick, HaveStartTick}, velocity::Velocity};
 
+/// MIDI Control Change event (e.g., sustain pedal, soft pedal).
+///
+/// Represents a MIDI CC (Control Change) message at a specific time position.
+/// Commonly used for pedal events like damper (sustain) and soft pedal.
+///
+/// # Examples
+///
+/// ```
+/// # use klavier_core::ctrl_chg::CtrlChg;
+/// # use klavier_core::velocity::Velocity;
+/// # use klavier_core::channel::Channel;
+/// // Sustain pedal on at tick 100
+/// let sustain_on = CtrlChg::new(100, Velocity::new(127), Channel::new(0));
+/// ```
 #[derive(serde::Deserialize, serde::Serialize)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct CtrlChg {
+    /// The tick position where this control change occurs.
     pub start_tick: u32,
+    /// The control value (0-127).
     pub velocity: Velocity,
+    /// The MIDI channel.
     pub channel: Channel,
 }
 
 impl CtrlChg {
+    /// Creates a new control change event.
+    ///
+    /// # Arguments
+    ///
+    /// * `start_tick` - The tick position for this event.
+    /// * `velocity` - The control value (0-127).
+    /// * `channel` - The MIDI channel.
     pub fn new(start_tick: u32, velocity: Velocity, channel: Channel) -> Self {
         Self { start_tick, velocity, channel }
     }
     
+    /// Creates a new control change with adjusted tick position (for dragging).
+    ///
+    /// # Arguments
+    ///
+    /// * `tick_delta` - Amount to adjust the tick position.
     pub fn drag(&self, tick_delta: i32) -> Self {
         Self {
              start_tick: (self.start_tick as i64 + tick_delta as i64) as u32,
@@ -21,6 +50,16 @@ impl CtrlChg {
         }
     }
 
+    /// Creates a new control change with adjusted tick position.
+    ///
+    /// # Arguments
+    ///
+    /// * `tick_delta` - Amount to adjust the tick position.
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(CtrlChg)` - The control change with adjusted position.
+    /// - `Err(TickError)` - If the resulting tick would be negative.
     pub fn with_tick_added(&self, tick_delta: i32) -> Result<Self, TickError> {
         let tick = self.start_tick as i64 + tick_delta as i64;
         if tick < 0 {

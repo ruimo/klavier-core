@@ -1,15 +1,26 @@
 use std::{fmt, hash::Hash};
 
+/// Note duration numerator (note type).
+///
+/// Represents the type of note: whole note, half note, quarter note, etc.
 #[derive(serde::Deserialize, serde::Serialize)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum Numerator {
+    /// Whole note (1)
     Whole,
+    /// Half note (1/2)
     Half,
+    /// Quarter note (1/4)
     Quarter,
+    /// Eighth note (1/8)
     N8th,
+    /// Sixteenth note (1/16)
     N16th,
+    /// Thirty-second note (1/32)
     N32nd,
+    /// Sixty-fourth note (1/64)
     N64th,
+    /// One hundred twenty-eighth note (1/128)
     N128th,
 }
 
@@ -48,6 +59,10 @@ impl Numerator {
     }
 }
 
+/// Tuplet denominator for note duration.
+///
+/// Represents the denominator in tuplets (e.g., 3 for triplets, 5 for quintuplets).
+/// A value of 2 means normal (non-tuplet) duration.
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(from="SerializedDenominator")]
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
@@ -88,6 +103,10 @@ impl Denominator {
     }
 }
 
+/// Number of dots extending a note's duration.
+///
+/// Each dot adds half the value of the previous duration.
+/// For example, a dotted quarter note = quarter + eighth.
 #[derive(serde::Deserialize, serde::Serialize)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub struct Dots(u8);
@@ -121,34 +140,74 @@ impl Dots {
     }
 }
 
-// numerator
-// 0:Whole note, 1:half note, ... 7:128th note
-//
-// denominator
-// 2:Normal, 3:3 group notes, ... 255
-//
-// dot
-// 0-7
+/// Represents the duration of a musical note.
+///
+/// A duration combines:
+/// - **Numerator**: The note type (whole, half, quarter, etc.)
+/// - **Denominator**: The tuplet grouping (2 = normal, 3 = triplet, etc.)
+/// - **Dots**: Number of dots extending the duration
+///
+/// # Examples
+///
+/// ```
+/// # use klavier_core::duration::{Duration, Numerator, Denominator, Dots};
+/// // Quarter note
+/// let quarter = Duration::new(
+///     Numerator::Quarter,
+///     Denominator::from_value(2).unwrap(),
+///     Dots::ZERO
+/// );
+/// assert_eq!(quarter.tick_length(), 240);
+///
+/// // Dotted quarter note
+/// let dotted_quarter = Duration::new(
+///     Numerator::Quarter,
+///     Denominator::from_value(2).unwrap(),
+///     Dots::ONE
+/// );
+/// assert_eq!(dotted_quarter.tick_length(), 360);
+/// ```
 #[derive(serde::Deserialize, serde::Serialize)]
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Default)]
 pub struct Duration {
+    /// The note type (whole, half, quarter, etc.).
     pub numerator: Numerator,
+    /// The tuplet denominator (2 = normal, 3 = triplet, etc.).
     pub denominator: Denominator,
+    /// The number of dots (0-7).
     pub dots: Dots,
 }
 
 impl Duration {
+    /// Ticks per quarter note (MIDI standard).
     pub const TICK_RESOLUTION: i32 = 240;
-    pub const MAX_TICK_LENGTH: i32 = Duration::TICK_RESOLUTION * 8; // Max tick length = whole note * 2
+    /// Maximum tick length (whole note * 2).
+    pub const MAX_TICK_LENGTH: i32 = Duration::TICK_RESOLUTION * 8;
+    /// Minimum denominator value.
     pub const MIN_DENOMINATOR: u8 = 2;
+    /// Maximum denominator value.
     pub const MAX_DENOMINATOR: u8 = 255;
+    /// Maximum number of dots.
     pub const MAX_DOT: u8 = 7;
+    /// Maximum numerator ordinal.
     pub const MAX_NUMERATOR: u8 = 7;
 
+    /// Creates a new duration.
+    ///
+    /// # Arguments
+    ///
+    /// * `numerator` - The note type.
+    /// * `denominator` - The tuplet denominator.
+    /// * `dots` - The number of dots.
     pub fn new(numerator: Numerator, denominator: Denominator, dots: Dots) -> Duration {
         Self { numerator, denominator, dots }
     }
 
+    /// Calculates the duration in ticks.
+    ///
+    /// # Returns
+    ///
+    /// The duration in ticks, accounting for note type, tuplets, and dots.
     pub const fn tick_length(self) -> u32 {
         let numerator = self.numerator.ord();
         let len =
@@ -165,18 +224,22 @@ impl Duration {
         }
     }
 
+    /// Creates a new duration with a different numerator.
     pub fn with_numerator(self, numerator: Numerator) -> Duration {
         Self::new(numerator, self.denominator, self.dots)
     }
 
+    /// Creates a new duration with a different denominator.
     pub fn with_denominator(self, denominator: Denominator) -> Duration {
         Self::new(self.numerator, denominator, self.dots)
     }
 
+    /// Creates a new duration with a different number of dots.
     pub fn with_dots(self, dots: Dots) -> Duration {
         Self::new(self.numerator, self.denominator, dots)
     }
 
+    /// Returns the shorter of two durations.
     pub fn min(self, other: Self) -> Self {
         if self.tick_length() < other.tick_length() { self } else { other }
     }

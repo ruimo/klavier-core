@@ -2,7 +2,6 @@ pub mod octave;
 pub mod sharp_flat;
 pub mod solfa;
 pub mod pitch;
-pub mod fly_weight;
 pub mod trimmer;
 pub mod duration;
 pub mod note;

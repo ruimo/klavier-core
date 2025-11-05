@@ -4,25 +4,45 @@ use klavier_helper::{bag_store::BagStore, sliding, store::{self, Store}};
 use crate::{bar::Bar, bar::RepeatSet, channel::Channel, ctrl_chg::CtrlChg, duration::Duration, global_repeat::RenderRegionWarning, have_start_tick::HaveStartTick, key::Key, note::Note, octave::Octave, pitch::Pitch, repeat::{AccumTick, Chunk, RenderRegionError, render_region}, repeat_set, rhythm::Rhythm, sharp_flat::SharpFlat, solfa::Solfa, tempo::{Tempo, TempoValue}, velocity::Velocity};
 use crate::project::{tempo_at, ModelChangeMetadata};
 
+/// MIDI event source representing different types of MIDI messages.
+///
+/// This enum encapsulates the three main types of MIDI messages used
+/// in this library: note on, note off, and control change.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MidiSrc {
+    /// MIDI Note On message - starts playing a note.
     NoteOn {
+        /// The MIDI channel (0-15).
         channel: Channel,
+        /// The pitch of the note.
         pitch: Pitch,
+        /// The velocity (volume) of the note.
         velocity: Velocity,
     },
+    /// MIDI Note Off message - stops playing a note.
     NoteOff {
+        /// The MIDI channel (0-15).
         channel: Channel,
+        /// The pitch of the note to stop.
         pitch: Pitch,
     },
+    /// MIDI Control Change message - modifies a controller value.
     CtrlChg {
+        /// The MIDI channel (0-15).
         channel: Channel,
+        /// The controller number (0-127).
         number: u8,
+        /// The controller value.
         velocity: Velocity,
     },
 }
 
 impl MidiSrc {
+    /// Renders this MIDI event to raw MIDI bytes.
+    ///
+    /// # Arguments
+    ///
+    /// * `buf` - The buffer to append the MIDI bytes to.
     fn render_to(self, buf: &mut Vec<u8>) {
         match self {
             MidiSrc::NoteOn {
@@ -53,15 +73,37 @@ impl MidiSrc {
 }
 
 
+/// Playback data containing MIDI events organized by audio cycles.
+///
+/// This structure is optimized for real-time audio playback, with MIDI events
+/// indexed by audio cycle numbers rather than musical ticks.
 #[derive(Clone)]
 pub struct PlayData {
+    /// MIDI data organized by audio cycle, where each cycle contains
+    /// a vector of MIDI messages (each message is a Vec<u8>).
     pub midi_data: Store<u64, Vec<Vec<u8>>, ()>,
-    // Key: cycle, Value: tick
+    
+    /// Tracking table mapping cycles to accumulated ticks and tempo values.
+    /// Key: cycle, Value: (accumulated tick, tempo)
     table_for_tracking: Store<u64, (AccumTick, TempoValue), ()>,
+    
+    /// Chunks representing the structure of repeats in the music.
     chunks: Store<AccumTick, Chunk, ()>,
 }
 
 impl PlayData {
+    /// Converts an audio cycle number to an accumulated tick position.
+    ///
+    /// This is used for tracking playback position in musical time.
+    ///
+    /// # Arguments
+    ///
+    /// * `cycle` - The audio cycle number.
+    /// * `sampling_rate` - The audio sampling rate (e.g., 48000 Hz).
+    ///
+    /// # Returns
+    ///
+    /// The accumulated tick position corresponding to the given cycle.
     pub fn cycle_to_tick(&self, cycle: u64, sampling_rate: u32) -> AccumTick {
         let finder = self.table_for_tracking.finder();
         match finder.just_before(cycle) {
@@ -78,6 +120,18 @@ impl PlayData {
         }
     }
 
+    /// Converts an accumulated tick to the actual tick position within a chunk.
+    ///
+    /// This accounts for repeat structures where the same musical section
+    /// may be played multiple times.
+    ///
+    /// # Arguments
+    ///
+    /// * `tick` - The accumulated tick position.
+    ///
+    /// # Returns
+    ///
+    /// The actual tick position within the original musical structure.
     pub fn accum_tick_to_tick(&self, tick: AccumTick) -> u32 {
         match self.chunks.finder().just_before(tick) {
             Some((at_tick, chunk)) => chunk.start_tick() + (tick - at_tick),
@@ -86,14 +140,28 @@ impl PlayData {
     }
 }
 
+/// Collection of MIDI events organized by accumulated tick position.
+///
+/// This structure represents the complete MIDI event timeline for a piece
+/// of music, including all repeats expanded into a linear sequence.
 #[derive(Clone)]
 pub struct MidiEvents {
+    /// Map of accumulated tick positions to MIDI events occurring at that time.
     pub events: BTreeMap<AccumTick, Vec<MidiSrc>>,
+    
+    /// Tempo changes indexed by accumulated tick position.
     pub tempo_table: Store<AccumTick, TempoValue, ()>,
+    
+    /// Chunks representing the structure of repeats in the music.
     pub chunks: Store<AccumTick, Chunk, ()>,
 }
 
 impl MidiEvents {
+    /// Creates a new `MidiEvents` collection from the given chunks.
+    ///
+    /// # Arguments
+    ///
+    /// * `chunks` - The repeat structure chunks for the music.
     pub fn new(chunks: &[Chunk]) -> Self {
         Self {
             events: BTreeMap::new(),
@@ -102,6 +170,14 @@ impl MidiEvents {
         }
     }
 
+    /// Adds a MIDI event at the specified accumulated tick position.
+    ///
+    /// If multiple events occur at the same tick, they are stored in a vector.
+    ///
+    /// # Arguments
+    ///
+    /// * `tick` - The accumulated tick position.
+    /// * `m` - The MIDI event to add.
     pub fn add_midi_event(&mut self, tick: AccumTick, m: MidiSrc) {
         match self.events.get_mut(&tick) {
             Some(found) => {
@@ -113,10 +189,28 @@ impl MidiEvents {
         };
     }
 
+    /// Adds a tempo change at the specified accumulated tick position.
+    ///
+    /// # Arguments
+    ///
+    /// * `tick` - The accumulated tick position.
+    /// * `tempo` - The new tempo value.
     pub fn add_tempo(&mut self, tick: AccumTick, tempo: TempoValue) {
         self.tempo_table.add(tick, tempo, ());
     }
 
+    /// Creates a mapping from accumulated ticks to audio cycles.
+    ///
+    /// This is used to convert musical time (ticks) to audio time (cycles).
+    ///
+    /// # Arguments
+    ///
+    /// * `sampling_rate` - The audio sampling rate (e.g., 48000 Hz).
+    /// * `ticks_per_quarter` - The number of ticks per quarter note.
+    ///
+    /// # Returns
+    ///
+    /// A store mapping accumulated ticks to (tempo, cycle) pairs.
     pub fn cycles_by_accum_tick(
         &self,
         sampling_rate: usize,
@@ -139,21 +233,59 @@ impl MidiEvents {
         buf
     }
 
+    /// Converts an accumulated tick position to an audio cycle number.
+    ///
+    /// # Arguments
+    ///
+    /// * `finder` - A finder for looking up tempo changes.
+    /// * `tick` - The accumulated tick position.
+    /// * `sampling_rate` - The audio sampling rate.
+    /// * `ticks_per_quarter` - The number of ticks per quarter note.
+    ///
+    /// # Returns
+    ///
+    /// The audio cycle number corresponding to the given tick.
     pub fn accum_tick_to_cycle(finder: &mut store::Finder<'_, u32, (TempoValue, u64), ()>, tick: AccumTick, sampling_rate: usize, ticks_per_quarter: u32) -> u64 {
         match finder.just_before(tick) {
-            Some((t, (tempo, cycles))) => 
+            Some((t, (tempo, cycles))) =>
                 *cycles + Self::tick_to_cycle(tick - *t, sampling_rate, tempo.as_u16(), ticks_per_quarter),
-            None => 
+            None =>
                 Self::tick_to_cycle(tick, sampling_rate, TempoValue::default().as_u16(), ticks_per_quarter),
         }
     }
 
+    /// Converts a tick duration to audio cycles at a given tempo.
+    ///
+    /// # Arguments
+    ///
+    /// * `tick` - The tick duration.
+    /// * `sampling_rate` - The audio sampling rate.
+    /// * `tempo` - The tempo in BPM.
+    /// * `ticks_per_quarter` - The number of ticks per quarter note.
+    ///
+    /// # Returns
+    ///
+    /// The number of audio cycles.
     fn tick_to_cycle(tick: u32, sampling_rate: usize, tempo: u16, ticks_per_quarter: u32) -> u64 {
         tick as u64 * sampling_rate as u64 * 60
             / tempo as u64
             / ticks_per_quarter as u64
     }
 
+    /// Converts this `MidiEvents` to `PlayData` for real-time playback.
+    ///
+    /// This method transforms the tick-based event timeline into a cycle-based
+    /// timeline suitable for audio playback.
+    ///
+    /// # Arguments
+    ///
+    /// * `cycles_by_tick` - Mapping from ticks to cycles.
+    /// * `sampling_rate` - The audio sampling rate.
+    /// * `ticks_per_quarter` - The number of ticks per quarter note.
+    ///
+    /// # Returns
+    ///
+    /// A `PlayData` structure ready for real-time playback.
     pub fn to_play_data(self, cycles_by_tick: Store<AccumTick, (TempoValue, u64), ()>, sampling_rate: usize, ticks_per_quarter: u32) -> PlayData {
         let mut cycles_by_tick = cycles_by_tick.finder();
         let mut midi_data = Store::new(false);
@@ -308,6 +440,45 @@ fn notes_by_base_start_tick(
   notes
 }
 
+/// Creates MIDI events from a musical project.
+///
+/// This is the main function that converts a high-level musical representation
+/// (notes, bars, tempo changes, etc.) into a timeline of MIDI events ready for
+/// playback or export.
+///
+/// # Arguments
+///
+/// * `top_rhythm` - The initial time signature.
+/// * `top_key` - The initial key signature.
+/// * `note_repo` - Repository of all notes in the piece.
+/// * `bar_repo` - Repository of all bars (measures) with their properties.
+/// * `tempo_repo` - Repository of tempo changes.
+/// * `dumper_repo` - Repository of damper pedal (sustain) events.
+/// * `soft_repo` - Repository of soft pedal events.
+///
+/// # Returns
+///
+/// - `Ok((MidiEvents, Vec<RenderRegionWarning>))` - The generated MIDI events and any warnings.
+/// - `Err(Report<RenderRegionError>)` - If there's an error in the repeat structure.
+///
+/// # Examples
+///
+/// ```no_run
+/// # use klavier_core::midi_events::create_midi_events;
+/// # use klavier_core::rhythm::Rhythm;
+/// # use klavier_core::key::Key;
+/// # use klavier_helper::bag_store::BagStore;
+/// # use klavier_helper::store::Store;
+/// let (events, warnings) = create_midi_events(
+///     Rhythm::new(4, 4),
+///     Key::NONE,
+///     &BagStore::new(false),
+///     &Store::new(false),
+///     &Store::new(false),
+///     &Store::new(false),
+///     &Store::new(false),
+/// ).unwrap();
+/// ```
 pub fn create_midi_events(
     top_rhythm: Rhythm,
     top_key: Key,

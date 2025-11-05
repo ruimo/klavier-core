@@ -2,15 +2,26 @@ use error_stack::{Report, IntoReport};
 use interval::{IntervalSet, interval_set::ToIntervalSet};
 use crate::{rhythm::Rhythm, repeat::RenderRegionError, bar::{Bar, Repeat}, have_start_tick::HaveBaseStartTick};
 
+/// Coda marker positions in the score.
+///
+/// A coda is a concluding section of a piece, marked with the coda sign (⊕).
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Coda {
+  /// Single coda marker (orphan, will generate a warning).
   One(u32),
+  /// Two coda markers (from and to positions).
   Two { from_tick: u32, to_tick: u32 },
 }
 
+/// D.C. (Da Capo) or D.S. (Dal Segno) repeat instruction.
+///
+/// These are navigation instructions that tell the performer to jump to
+/// a different location in the score.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum DsDc {
+  /// Da Capo - return to the beginning.
   Dc { tick: u32, len: u32 },
+  /// Dal Segno - return to the segno sign.
   Ds { tick: u32 },
 }
 
@@ -23,48 +34,81 @@ impl DsDc {
   }
 }
 
+/// Warnings generated during repeat structure rendering.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum RenderRegionWarning {
+  /// Both Segno and D.C. were found (Segno will be used, D.C. ignored).
   SegnoAndDcFound { segno_tick: u32, dc_tick: u32 },
+  /// A single Coda marker was found without a matching pair.
   OrphanCodaFound { coda_tick: u32 },
 }
 
+/// Global repeat structure for a musical piece.
+///
+/// Represents the overall repeat structure including D.C./D.S., Fine, Segno,
+/// and Coda markers. This structure is used to determine the playback order
+/// of musical sections.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct GlobalRepeat {
+  /// The D.C. or D.S. instruction.
   ds_dc: DsDc,
+  /// Optional Fine (end) marker position.
   fine: Option<u32>,
+  /// Segno (target for D.S.) marker position.
   segno: u32,
+  /// Optional Coda jump positions [from, to].
   coda: Option<[u32; 2]>,
+  /// Interval set for the first iteration.
   iter1_interval_set: IntervalSet<u32>,
 }
 
 impl GlobalRepeat {
+  /// Returns the segno marker position.
   pub fn segno(&self) -> u32 {
     self.segno
   }
 
+  /// Returns the D.C. or D.S. instruction.
   pub fn ds_dc(&self) -> DsDc {
     self.ds_dc
   }
 
+  /// Returns the interval set for the first iteration.
   pub fn iter1_interval_set(&self) -> &IntervalSet<u32> {
     &self.iter1_interval_set
   }
 }
 
+/// Builder for constructing a `GlobalRepeat` structure.
+///
+/// This builder accumulates repeat markers as bars are processed and
+/// validates the repeat structure before building the final `GlobalRepeat`.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct GlobalRepeatBuilder {
+  /// The D.C. or D.S. instruction.
   pub ds_dc: Option<DsDc>,
+  /// Optional Fine marker position.
   pub fine: Option<u32>,
+  /// Optional Segno marker position.
   pub segno: Option<u32>,
+  /// Optional Coda marker(s).
   pub coda: Option<Coda>,
+  /// Length of the first bar (for auftakt/pickup measures).
   pub first_bar_len: Option<u32>,
+  /// The top-level rhythm (time signature).
   pub top_rhythm: Rhythm,
+  /// Accumulated warnings during building.
   pub warnings: Vec<RenderRegionWarning>,
+  /// Previous bar's tick position.
   pub prev_bar_tick: Option<u32>,
 }
 
 impl GlobalRepeatBuilder {
+  /// Creates a new builder with the given time signature.
+  ///
+  /// # Arguments
+  ///
+  /// * `tune_rhythm` - The initial time signature of the piece.
   pub fn new(tune_rhythm: Rhythm) -> Self {
     Self {
       ds_dc: None,

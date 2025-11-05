@@ -2,9 +2,14 @@ use std::{fmt::{self, Display}, str::FromStr};
 
 use super::duration::Duration;
 
+/// Minimum numerator value for time signatures.
 pub const MIN_NUMERATOR: u8 = 1;
+/// Maximum numerator value for time signatures.
 pub const MAX_NUMERATOR: u8 = 99;
 
+/// Time signature numerator (beats per measure).
+///
+/// Represents the top number in a time signature (e.g., the 3 in 3/4).
 #[derive(serde::Deserialize, serde::Serialize)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Numerator(u8);
@@ -15,9 +20,12 @@ impl Display for Numerator {
     }
 }
 
+/// Error type for numerator operations.
 #[derive(Debug)]
 pub enum NumeratorError {
+    /// The numerator value is out of valid range (1-99).
     InvalidValue(u8),
+    /// Failed to parse the numerator from a string.
     CannotParse(String),
 }
 
@@ -46,18 +54,36 @@ impl FromStr for Numerator {
     }
 }
 
+/// Time signature denominator (note value per beat).
+///
+/// Represents the bottom number in a time signature (e.g., the 4 in 3/4).
+/// Only standard note values are supported: 2, 4, 8, 16, 32, 64.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[derive(serde::Deserialize, serde::Serialize)]
 pub enum Denominator {
-    D2, D4, D8, D16, D32, D64,
+    /// Half note (2)
+    D2,
+    /// Quarter note (4)
+    D4,
+    /// Eighth note (8)
+    D8,
+    /// Sixteenth note (16)
+    D16,
+    /// Thirty-second note (32)
+    D32,
+    /// Sixty-fourth note (64)
+    D64,
 }
 
+/// Array of all valid denominators.
 pub const DENOMINATORS: [Denominator; 6] = [
     Denominator::D2, Denominator::D4, Denominator::D8,
     Denominator::D16, Denominator::D32, Denominator::D64,
 ];
 
+/// Error type for denominator operations.
 pub enum DenominatorError {
+    /// The denominator value is not a valid note value.
     InvalidValue(u8),
 }
 
@@ -92,21 +118,56 @@ impl fmt::Display for Denominator {
     }
 }
 
+/// Error type for rhythm (time signature) operations.
 #[derive(serde::Deserialize, serde::Serialize)]
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum RhythmError {
+    /// Invalid numerator value.
     NumeratorError(u8),
+    /// Invalid denominator value.
     DenominatorError(u8)
 }
 
+/// Time signature (rhythm) combining numerator and denominator.
+///
+/// Represents a time signature like 4/4, 3/4, 6/8, etc.
+///
+/// # Examples
+///
+/// ```
+/// # use klavier_core::rhythm::Rhythm;
+/// let common_time = Rhythm::new(4, 4);
+/// let waltz = Rhythm::new(3, 4);
+/// let compound = Rhythm::new(6, 8);
+/// ```
 #[derive(serde::Deserialize, serde::Serialize)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Rhythm {
+    /// The numerator (beats per measure).
     pub numerator: Numerator,
+    /// The denominator (note value per beat).
     pub denominator: Denominator,
 }
 
 impl Rhythm {
+    /// Creates a new time signature.
+    ///
+    /// # Arguments
+    ///
+    /// * `numerator` - Beats per measure (1-99).
+    /// * `denominator` - Note value per beat (2, 4, 8, 16, 32, or 64).
+    ///
+    /// # Panics
+    ///
+    /// Panics if the values are invalid.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use klavier_core::rhythm::Rhythm;
+    /// let four_four = Rhythm::new(4, 4);
+    /// let six_eight = Rhythm::new(6, 8);
+    /// ```
     pub fn new(numerator: u8, denominator: u8) -> Rhythm {
         match Self::value_of(numerator, denominator) {
             Err(_pe) => panic!("Logic error."),
@@ -114,14 +175,27 @@ impl Rhythm {
         }
     }
 
+    /// Returns the numerator of this time signature.
     pub fn numerator(self) -> Numerator {
         self.numerator
     }
 
+    /// Returns the denominator of this time signature.
     pub fn denominator(self) -> Denominator {
         self.denominator
     }
 
+    /// Attempts to create a time signature from raw values.
+    ///
+    /// # Arguments
+    ///
+    /// * `numerator` - Beats per measure (1-99).
+    /// * `denominator` - Note value per beat (2, 4, 8, 16, 32, or 64).
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(Rhythm)` - The time signature.
+    /// - `Err(RhythmError)` - If either value is invalid.
     pub fn value_of(numerator: u8, denominator: u8) -> Result<Rhythm, RhythmError> {
         let numerator = Numerator::from_value(numerator);
         let numerator = match numerator {
@@ -139,6 +213,11 @@ impl Rhythm {
         Ok(Self {numerator, denominator})
     }
 
+    /// Calculates the length of one measure in ticks.
+    ///
+    /// # Returns
+    ///
+    /// The number of ticks in one measure of this time signature.
     pub fn tick_len(self) -> u32 {
         ((self.numerator.0 as i32) * Duration::TICK_RESOLUTION * 4 / (self.denominator.value() as i32)) as u32
     }

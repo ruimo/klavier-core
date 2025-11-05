@@ -1,9 +1,34 @@
 use std::{fmt, ops::{AddAssign, SubAssign}};
 
+/// Musical note names (solfège syllables).
+///
+/// Represents the seven natural notes in Western music: C, D, E, F, G, A, B.
+/// These correspond to the white keys on a piano.
+///
+/// # Examples
+///
+/// ```
+/// # use klavier_core::solfa::Solfa;
+/// let middle_c = Solfa::C;
+/// let a_note = Solfa::A;
+/// ```
 #[derive(serde::Deserialize, serde::Serialize)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Solfa {
-    C, D, E, F, G, A, B,
+    /// C note
+    C,
+    /// D note
+    D,
+    /// E note
+    E,
+    /// F note
+    F,
+    /// G note
+    G,
+    /// A note
+    A,
+    /// B note
+    B,
 }
 
 impl AddAssign<i32> for Solfa {
@@ -27,8 +52,12 @@ impl SubAssign<i32> for Solfa {
 }
 
 impl Solfa {
+    /// Array of all seven natural notes.
     pub const ALL: &'static [Solfa] = &[Self::C, Self::D, Self::E, Self::F, Self::G, Self::A, Self::B];
 
+    /// Returns the position on the musical staff (0-6).
+    ///
+    /// C=0, D=1, E=2, F=3, G=4, A=5, B=6
     pub const fn score_offset(self) -> i32 {
         match self {
             Self::C => 0,
@@ -41,6 +70,10 @@ impl Solfa {
         }
     }
 
+    /// Returns the pitch offset in semitones from C (0-11).
+    ///
+    /// This represents the number of semitones above C within an octave.
+    /// C=0, D=2, E=4, F=5, G=7, A=9, B=11
     pub const fn pitch_offset(self) -> i32 {
         match self {
             Self::C => 0,
@@ -53,6 +86,13 @@ impl Solfa {
         }
     }
 
+    /// Creates a solfa from a staff position offset.
+    ///
+    /// Values outside the valid range (0-6) are clamped to C or B.
+    ///
+    /// # Arguments
+    ///
+    /// * `offset` - The staff position (0-6).
     pub fn from_score_offset(offset: i32) -> Solfa {
         if offset < Self::C.score_offset() {
             Self::C

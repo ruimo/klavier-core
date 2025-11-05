@@ -4,18 +4,41 @@ use enumset::{EnumSetType, EnumSet, enum_set};
 
 use super::{key::Key, rhythm::Rhythm, note::TickError, have_start_tick::{HaveBaseStartTick, HaveStartTick}};
 
+/// Index for variation endings in repeat structures.
+///
+/// Represents the variation number (1-4) used in repeat endings like "1." and "2."
+/// in musical notation.
 #[derive(serde::Deserialize, serde::Serialize)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VarIndex {
-    VI1, VI2, VI3, VI4,
+    /// First variation ending
+    VI1,
+    /// Second variation ending
+    VI2,
+    /// Third variation ending
+    VI3,
+    /// Fourth variation ending
+    VI4,
 }
 
+/// Error type for invalid variation index values.
 #[derive(Debug)]
 pub enum VarIndexError {
+    /// The provided index value is not in the valid range (1-4).
     InvalidIndex(u8),
 }
 
 impl VarIndex {
+    /// Creates a `VarIndex` from a numeric value (1-4).
+    ///
+    /// # Arguments
+    ///
+    /// * `value` - The variation index number (must be 1, 2, 3, or 4).
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(VarIndex)` - The corresponding variation index.
+    /// - `Err(VarIndexError::InvalidIndex)` - If the value is not in the range 1-4.
     pub fn from_value(value: u8) -> Result<VarIndex, VarIndexError> {
         match value {
             1 => Ok(VarIndex::VI1),
@@ -26,6 +49,7 @@ impl VarIndex {
         }
     }
 
+    /// Returns the numeric value (1-4) of this variation index.
     pub fn value(self) -> u8 {
         match self {
             VarIndex::VI1 => 1,
@@ -35,14 +59,27 @@ impl VarIndex {
         }
     }
 
+    /// Returns the next variation index.
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(VarIndex)` - The next variation index.
+    /// - `Err(VarIndexError)` - If this is already the last variation (VI4).
     pub fn next(self) -> Result<VarIndex, VarIndexError> {
         Self::from_value(self.value() + 1)
     }
 
+    /// Returns the previous variation index.
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(VarIndex)` - The previous variation index.
+    /// - `Err(VarIndexError)` - If this is already the first variation (VI1).
     pub fn prev(self) -> Result<VarIndex, VarIndexError> {
         Self::from_value(self.value() - 1)
     }
 
+    /// Converts this variation index to the corresponding `Repeat` variant.
     pub fn to_repeat(self) -> Repeat {
         match self {
             Self::VI1 => Repeat::Var1,
@@ -59,19 +96,34 @@ impl From<u8> for VarIndex {
     }
 }
 
+/// Repeat and navigation symbols used in musical notation.
+///
+/// These symbols control the flow of music playback, including repeats,
+/// jumps, and variation endings.
 #[derive(serde::Deserialize, serde::Serialize)]
 #[derive(Debug, EnumSetType)]
 pub enum Repeat {
+    /// Repeat start marker (|:)
     Start,
+    /// Repeat end marker (:|)
     End,
+    /// Da Capo - return to the beginning
     Dc,
+    /// Fine - end of the piece
     Fine,
+    /// Dal Segno - return to the segno sign
     Ds,
+    /// Segno sign (𝄋) - target for D.S.
     Segno,
+    /// Coda sign (⊕) - jump target
     Coda,
+    /// First variation ending
     Var1,
+    /// Second variation ending
     Var2,
+    /// Third variation ending
     Var3,
+    /// Fourth variation ending
     Var4,
 }
 
@@ -95,6 +147,10 @@ impl fmt::Display for Repeat {
     }
 }
 
+/// A set of repeat symbols that can be applied to a bar.
+///
+/// This structure ensures that only compatible repeat symbols can be
+/// combined together, preventing invalid musical notation.
 #[derive(serde::Deserialize, serde::Serialize)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct RepeatSet {
@@ -102,49 +158,62 @@ pub struct RepeatSet {
 }
 
 impl RepeatSet {
+    /// All variation ending bits combined.
     const ALL_REGION_BITS: EnumSet<Repeat> = enum_set!(Repeat::Var1 | Repeat::Var2 | Repeat::Var3 | Repeat::Var4);
 
+    /// Repeat symbols that cannot coexist with Start.
     const START_DISLIKE: EnumSet<Repeat> = enum_set!(
         Repeat::Dc | Repeat::Ds
         | Repeat::Var1 | Repeat::Var2 | Repeat::Var3 | Repeat::Var4
     );
 
+    /// Repeat symbols that cannot coexist with End.
     const END_DISLIKE: EnumSet<Repeat> = Self::ALL_REGION_BITS;
 
+    /// Repeat symbols that cannot coexist with D.C.
     const DC_DISLIKE: EnumSet<Repeat> = enum_set!(
         Repeat::Start | Repeat::Ds | Repeat::Segno
         | Repeat::Var1 | Repeat::Var2 | Repeat::Var3 | Repeat::Var4
     );
 
+    /// Repeat symbols that cannot coexist with D.S.
     const DS_DISLIKE: EnumSet<Repeat> = enum_set!(
         Repeat::Start
         | Repeat::Var1 | Repeat::Var2 | Repeat::Var3 | Repeat::Var4
     );
 
+    /// Repeat symbols that cannot coexist with Var1.
     const REGION1_DISLIKE: EnumSet<Repeat> = enum_set!(
         Repeat::Start | Repeat::End | Repeat::Dc | Repeat::Ds | Repeat::Segno | Repeat::Var2 | Repeat::Var3 | Repeat::Var4
     );
 
+    /// Repeat symbols that cannot coexist with Var2.
     const REGION2_DISLIKE: EnumSet<Repeat> = enum_set!(
         Repeat::Start | Repeat::End | Repeat::Dc | Repeat::Ds | Repeat::Segno | Repeat::Var1 | Repeat::Var3 | Repeat::Var4
     );
 
+    /// Repeat symbols that cannot coexist with Var3.
     const REGION3_DISLIKE: EnumSet<Repeat> = enum_set!(
         Repeat::Start | Repeat::End | Repeat::Dc | Repeat::Ds | Repeat::Segno | Repeat::Var1 | Repeat::Var2 | Repeat::Var4
     );
 
+    /// Repeat symbols that cannot coexist with Var4.
     const REGION4_DISLIKE: EnumSet<Repeat> = enum_set!(
         Repeat::Start | Repeat::End | Repeat::Dc | Repeat::Ds | Repeat::Segno | Repeat::Var1 | Repeat::Var2 | Repeat::Var3
     );
 
+    /// An empty repeat set with no symbols.
     pub const EMPTY: RepeatSet = Self { value: EnumSet::empty() };
 
+    /// Checks if this set contains the specified repeat symbol.
     pub fn contains(self, r: Repeat) -> bool {
         self.value.contains(r)
     }
 
+    /// Creates a new repeat set from an `EnumSet`.
     const fn new(value: EnumSet<Repeat>) -> Self { Self { value } }
 
+    /// Internal helper to try adding a repeat symbol with conflict checking.
     #[inline]
     fn try_add_repeat(self, dislike: EnumSet<Repeat>, r: Repeat) -> Result<Self, EnumSet<Repeat>> {
         let dislike = dislike & self.value;
@@ -155,6 +224,25 @@ impl RepeatSet {
         }
     }
 
+    /// Attempts to add a repeat symbol to this set.
+    ///
+    /// # Arguments
+    ///
+    /// * `r` - The repeat symbol to add.
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(RepeatSet)` - A new set with the symbol added.
+    /// - `Err(EnumSet<Repeat>)` - The set of conflicting symbols that prevent adding.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use klavier_core::bar::{RepeatSet, Repeat};
+    /// let set = RepeatSet::EMPTY;
+    /// let set = set.try_add(Repeat::Start).unwrap();
+    /// assert!(set.contains(Repeat::Start));
+    /// ```
     pub fn try_add(self, r: Repeat) -> Result<Self, EnumSet<Repeat>> {
         match r {
             Repeat::Start => self.try_add_repeat(Self::START_DISLIKE, r),
@@ -171,12 +259,19 @@ impl RepeatSet {
         }
     }
 
+    /// Removes a repeat symbol from this set.
     pub fn remove(self, r: Repeat) -> Self {
         let mut copy = self;
         copy.value.remove(r);
         copy
     }
 
+    /// Returns the variation index if this set contains a variation ending.
+    ///
+    /// # Returns
+    ///
+    /// - `Some(VarIndex)` - The variation index (1-4).
+    /// - `None` - If no variation ending is present.
     pub fn region_index(self) -> Option<VarIndex> {
         if self.contains(Repeat::Var1) { Some(VarIndex::VI1) }
         else if self.contains(Repeat::Var2) { Some(VarIndex::VI2) }
@@ -185,6 +280,7 @@ impl RepeatSet {
         else { None }
     }
 
+    /// Removes all variation ending symbols from this set.
     pub fn remove_resions(self) -> Self {
         let mut copy = self;
         copy.value.remove(Repeat::Var1);
@@ -194,10 +290,12 @@ impl RepeatSet {
         copy
     }
 
+    /// Returns the number of repeat symbols in this set.
     pub fn len(self) -> usize {
         self.value.len()
     }
 
+    /// Returns `true` if this set contains no repeat symbols.
     pub fn is_empty(self) -> bool {
         self.value.is_empty()
     }
@@ -218,16 +316,49 @@ macro_rules! repeat_set {
     };
 }
 
+/// Represents a measure (bar) in musical notation.
+///
+/// A bar marks a division in music and can contain rhythm changes, key changes,
+/// and repeat symbols.
+///
+/// # Examples
+///
+/// ```
+/// # use klavier_core::bar::{Bar, RepeatSet};
+/// # use klavier_core::rhythm::Rhythm;
+/// # use klavier_core::key::Key;
+/// let bar = Bar::new(
+///     0,
+///     Some(Rhythm::new(4, 4)),
+///     Some(Key::NONE),
+///     RepeatSet::EMPTY
+/// );
+/// ```
 #[derive(serde::Deserialize, serde::Serialize)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Bar {
+    /// The tick position where this bar starts.
     pub start_tick: u32,
+    
+    /// Optional rhythm (time signature) change at this bar.
     pub rhythm: Option<Rhythm>,
+    
+    /// Optional key signature change at this bar.
     pub key: Option<Key>,
+    
+    /// Set of repeat symbols applied to this bar.
     pub repeats: RepeatSet,
 }
 
 impl Bar {
+    /// Creates a new bar with the specified properties.
+    ///
+    /// # Arguments
+    ///
+    /// * `start_tick` - The tick position where this bar starts.
+    /// * `rhythm` - Optional rhythm (time signature) change.
+    /// * `key` - Optional key signature change.
+    /// * `repeats` - Set of repeat symbols for this bar.
     pub fn new(
         start_tick: u32,
         rhythm: Option<Rhythm>,
@@ -239,6 +370,14 @@ impl Bar {
         }
     }
 
+    /// Creates a new bar with the start tick adjusted by dragging.
+    ///
+    /// This method allows negative deltas and will cast the result to u32,
+    /// potentially wrapping around for very large negative values.
+    ///
+    /// # Arguments
+    ///
+    /// * `tick_delta` - The amount to add to the start tick.
     pub fn drag(&self, tick_delta: i32) -> Self {
         Self {
              start_tick: ((self.start_tick as i64) + tick_delta as i64) as u32,
@@ -246,6 +385,16 @@ impl Bar {
         }
     }
 
+    /// Creates a new bar with the start tick adjusted by the specified delta.
+    ///
+    /// # Arguments
+    ///
+    /// * `tick_delta` - The amount to add to the start tick.
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(Bar)` - A new bar with the adjusted start tick.
+    /// - `Err(TickError::Minus)` - If the resulting tick would be negative.
     pub fn with_tick_added(&self, tick_delta: i32) -> Result<Self, TickError> {
         let tick = (self.start_tick as i64) + tick_delta as i64;
         if tick < 0 {
