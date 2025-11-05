@@ -63,7 +63,7 @@ pub struct PlayData {
 
 impl PlayData {
     pub fn cycle_to_tick(&self, cycle: u64, sampling_rate: u32) -> AccumTick {
-        let mut finder = self.table_for_tracking.finder();
+        let finder = self.table_for_tracking.finder();
         match finder.just_before(cycle) {
             Some((c, (tick, tempo))) => {
                 tick + ((cycle - c) * tempo.as_u16() as u64 * Duration::TICK_RESOLUTION as u64
@@ -318,7 +318,7 @@ pub fn create_midi_events(
     soft_repo: &Store<u32, CtrlChg, ModelChangeMetadata>,
 ) -> Result<(MidiEvents, Vec<RenderRegionWarning>), Report<RenderRegionError>> {
     let key_table = create_key_table(top_key, bar_repo);
-    let mut key_finder = key_table.finder();
+    let key_finder = key_table.finder();
     let notes_by_base_start_tick = notes_by_base_start_tick(note_repo);
 
     let (region, warnings) = render_region(top_rhythm, bar_repo.iter().map(|(_, bar)| bar))?;
