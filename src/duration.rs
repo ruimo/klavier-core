@@ -4,13 +4,14 @@ use std::{fmt, hash::Hash};
 ///
 /// Represents the type of note: whole note, half note, quarter note, etc.
 #[derive(serde::Deserialize, serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, Default)]
 pub enum Numerator {
     /// Whole note (1)
     Whole,
     /// Half note (1/2)
     Half,
     /// Quarter note (1/4)
+    #[default]
     Quarter,
     /// Eighth note (1/8)
     N8th,
@@ -22,12 +23,6 @@ pub enum Numerator {
     N64th,
     /// One hundred twenty-eighth note (1/128)
     N128th,
-}
-
-impl Default for Numerator {
-    fn default() -> Self {
-        Self::Quarter
-    }
 }
 
 impl Numerator {
