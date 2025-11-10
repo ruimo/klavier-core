@@ -1,6 +1,6 @@
 use std::{collections::{BTreeMap, HashMap}, rc::Rc};
 use error_stack::Report;
-use klavier_helper::{bag_store::BagStore, sliding, store::{self, Store}};
+use klavier_helper::{bag_store::BagStore, sliding, store::Store};
 use crate::{bar::Bar, bar::RepeatSet, channel::Channel, ctrl_chg::CtrlChg, duration::Duration, global_repeat::RenderRegionWarning, have_start_tick::HaveStartTick, key::Key, note::Note, octave::Octave, pitch::Pitch, repeat::{AccumTick, Chunk, RenderRegionError, render_region}, repeat_set, rhythm::Rhythm, sharp_flat::SharpFlat, solfa::Solfa, tempo::{Tempo, TempoValue}, velocity::Velocity};
 use crate::project::{tempo_at, ModelChangeMetadata};
 
@@ -105,8 +105,7 @@ impl PlayData {
     ///
     /// The accumulated tick position corresponding to the given cycle.
     pub fn cycle_to_tick(&self, cycle: u64, sampling_rate: u32) -> AccumTick {
-        let finder = self.table_for_tracking.finder();
-        match finder.just_before(cycle) {
+        match self.table_for_tracking.just_before(cycle).next() {
             Some((c, (tick, tempo))) => {
                 tick + ((cycle - c) * tempo.as_u16() as u64 * Duration::TICK_RESOLUTION as u64
                     / sampling_rate as u64
@@ -133,7 +132,7 @@ impl PlayData {
     ///
     /// The actual tick position within the original musical structure.
     pub fn accum_tick_to_tick(&self, tick: AccumTick) -> u32 {
-        match self.chunks.finder().just_before(tick) {
+        match self.chunks.just_before(tick).next() {
             Some((at_tick, chunk)) => chunk.start_tick() + (tick - at_tick),
             None => tick,
         }
@@ -245,8 +244,8 @@ impl MidiEvents {
     /// # Returns
     ///
     /// The audio cycle number corresponding to the given tick.
-    pub fn accum_tick_to_cycle(finder: &mut store::Finder<'_, u32, (TempoValue, u64), ()>, tick: AccumTick, sampling_rate: usize, ticks_per_quarter: u32) -> u64 {
-        match finder.just_before(tick) {
+    pub fn accum_tick_to_cycle(cycles_by_tick: &Store<AccumTick, (TempoValue, u64), ()>, tick: AccumTick, sampling_rate: usize, ticks_per_quarter: u32) -> u64 {
+        match cycles_by_tick.just_before(tick).next() {
             Some((t, (tempo, cycles))) =>
                 *cycles + Self::tick_to_cycle(tick - *t, sampling_rate, tempo.as_u16(), ticks_per_quarter),
             None =>
@@ -266,7 +265,7 @@ impl MidiEvents {
     /// # Returns
     ///
     /// The number of audio cycles.
-    fn tick_to_cycle(tick: u32, sampling_rate: usize, tempo: u16, ticks_per_quarter: u32) -> u64 {
+    pub fn tick_to_cycle(tick: u32, sampling_rate: usize, tempo: u16, ticks_per_quarter: u32) -> u64 {
         tick as u64 * sampling_rate as u64 * 60
             / tempo as u64
             / ticks_per_quarter as u64
@@ -287,12 +286,11 @@ impl MidiEvents {
     ///
     /// A `PlayData` structure ready for real-time playback.
     pub fn to_play_data(self, cycles_by_tick: Store<AccumTick, (TempoValue, u64), ()>, sampling_rate: usize, ticks_per_quarter: u32) -> PlayData {
-        let mut cycles_by_tick = cycles_by_tick.finder();
         let mut midi_data = Store::new(false);
         let mut table_for_tracking = Store::new(false);
 
         for (tick, events) in self.events.iter() {
-            let c = Self::accum_tick_to_cycle(&mut cycles_by_tick, *tick, sampling_rate, ticks_per_quarter);
+            let c = Self::accum_tick_to_cycle(&cycles_by_tick, *tick, sampling_rate, ticks_per_quarter);
             for e in events.iter() {
                 let mut midi = vec![];
                 e.render_to(&mut midi);
@@ -308,7 +306,7 @@ impl MidiEvents {
         }
 
         for (tick, tempo) in self.tempo_table.iter() {
-            let c = Self::accum_tick_to_cycle(&mut cycles_by_tick, *tick, sampling_rate, ticks_per_quarter);
+            let c = Self::accum_tick_to_cycle(&cycles_by_tick, *tick, sampling_rate, ticks_per_quarter);
             table_for_tracking.add(c, (*tick, *tempo), ());
         }
 
@@ -489,7 +487,6 @@ pub fn create_midi_events(
     soft_repo: &Store<u32, CtrlChg, ModelChangeMetadata>,
 ) -> Result<(MidiEvents, Vec<RenderRegionWarning>), Report<RenderRegionError>> {
     let key_table = create_key_table(top_key, bar_repo);
-    let key_finder = key_table.finder();
     let notes_by_base_start_tick = notes_by_base_start_tick(note_repo);
 
     let (region, warnings) = render_region(top_rhythm, bar_repo.iter().map(|(_, bar)| bar))?;
@@ -548,8 +545,9 @@ pub fn create_midi_events(
         let mut softs = softs.iter().peekable();
         
         for (bar_from, bar_to) in sliding(&mut bar_itr) {
-            let mut key = *key_finder
+            let mut key = *key_table
                 .just_before(bar_from.1.start_tick())
+                .next()
                 .map(|(_tick, key)| key)
                 .unwrap_or(&top_key);
 
