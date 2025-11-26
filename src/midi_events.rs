@@ -212,7 +212,7 @@ impl MidiEvents {
     /// A store mapping accumulated ticks to (tempo, cycle) pairs.
     pub fn cycles_by_accum_tick(
         &self,
-        sampling_rate: usize,
+        sampling_rate: u32,
         ticks_per_quarter: u32,
     ) -> Store<AccumTick, (TempoValue, u64), ()> {
         let mut cycles: u64 = 0;
