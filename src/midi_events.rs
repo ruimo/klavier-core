@@ -244,7 +244,7 @@ impl MidiEvents {
     /// # Returns
     ///
     /// The audio cycle number corresponding to the given tick.
-    pub fn accum_tick_to_cycle(cycles_by_tick: &Store<AccumTick, (TempoValue, u64), ()>, tick: AccumTick, sampling_rate: usize, ticks_per_quarter: u32) -> u64 {
+    pub fn accum_tick_to_cycle(cycles_by_tick: &Store<AccumTick, (TempoValue, u64), ()>, tick: AccumTick, sampling_rate: u32, ticks_per_quarter: u32) -> u64 {
         match cycles_by_tick.just_before(tick).next() {
             Some((t, (tempo, cycles))) =>
                 *cycles + Self::tick_to_cycle(tick - *t, sampling_rate, tempo.as_u16(), ticks_per_quarter),
@@ -265,7 +265,7 @@ impl MidiEvents {
     /// # Returns
     ///
     /// The number of audio cycles.
-    pub fn tick_to_cycle(tick: u32, sampling_rate: usize, tempo: u16, ticks_per_quarter: u32) -> u64 {
+    pub fn tick_to_cycle(tick: u32, sampling_rate: u32, tempo: u16, ticks_per_quarter: u32) -> u64 {
         tick as u64 * sampling_rate as u64 * 60
             / tempo as u64
             / ticks_per_quarter as u64
@@ -285,7 +285,7 @@ impl MidiEvents {
     /// # Returns
     ///
     /// A `PlayData` structure ready for real-time playback.
-    pub fn to_play_data(self, cycles_by_tick: Store<AccumTick, (TempoValue, u64), ()>, sampling_rate: usize, ticks_per_quarter: u32) -> PlayData {
+    pub fn to_play_data(self, cycles_by_tick: Store<AccumTick, (TempoValue, u64), ()>, sampling_rate: u32, ticks_per_quarter: u32) -> PlayData {
         let mut midi_data = Store::new(false);
         let mut table_for_tracking = Store::new(false);
 
